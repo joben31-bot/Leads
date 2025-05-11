@@ -19,173 +19,245 @@
     </nav>
   </header>
 
-  <!-- Contrôles de navigation de date -->
+  <!-- CONTROLES -->
   <div class="p-4 bg-white flex items-center space-x-4">
-    <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Semaine précédente</button>
-    <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Semaine suivante →</button>
-    <span id="weekLabel" class="font-medium"></span>
+    <button id="prevWeek"    class="px-3 py-1 bg-gray-200 rounded">← Semaine précédente</button>
+    <button id="nextWeek"    class="px-3 py-1 bg-gray-200 rounded">Semaine suivante →</button>
+    <span id="weekLabel"     class="font-medium"></span>
     <input type="month" id="monthPicker" class="ml-auto border p-1 rounded"/>
+    <button id="toggleView"  class="px-3 py-1 bg-blue-200 rounded">Vue mensuelle</button>
   </div>
 
-  <!-- Grille hebdo -->
+  <!-- CONTAINER VUES -->
   <div class="flex-1 overflow-auto p-4">
-    <table class="w-full table-fixed border-collapse">
-      <thead>
-        <tr>
-          <th class="border p-2">Dimanche</th>
-          <th class="border p-2">Lundi</th>
-          <th class="border p-2">Mardi</th>
-          <th class="border p-2">Mercredi</th>
-          <th class="border p-2">Jeudi</th>
-          <th class="border p-2">Vendredi</th>
-          <th class="border p-2">Samedi</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr id="weekRow">
-          <!-- 7 cellules seront injectées ici -->
-        </tr>
-      </tbody>
-    </table>
+
+    <!-- VUE HEBDO -->
+    <div id="weekView">
+      <table class="w-full table-fixed border-collapse">
+        <thead>
+          <tr>
+            <th class="border p-2">Dim</th><th class="border p-2">Lun</th>
+            <th class="border p-2">Mar</th><th class="border p-2">Mer</th>
+            <th class="border p-2">Jeu</th><th class="border p-2">Ven</th>
+            <th class="border p-2">Sam</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr id="weekRow"></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- VUE MENSUELLE -->
+    <div id="monthView" class="hidden">
+      <table class="w-full table-fixed border-collapse">
+        <thead>
+          <tr id="monthHeader"></tr>
+        </thead>
+        <tbody>
+          <tr id="monthBody"></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <!-- Firebase SDKs -->
+  <!-- MODAL AJOUT/MODIF -->
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+    <div class="bg-white p-6 rounded shadow-lg w-80">
+      <h2 class="text-lg font-semibold mb-4" id="modalTitle">Ajouter livraison</h2>
+      <div class="space-y-3">
+        <label>
+          Client
+          <select id="modalClient" class="w-full border p-2 rounded"></select>
+        </label>
+        <label>
+          Quantité
+          <input type="number" id="modalQty" class="w-full border p-2 rounded" min="0"/>
+        </label>
+      </div>
+      <div class="mt-4 flex justify-end space-x-2">
+        <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+        <button id="modalSave" class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase & scripts -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+          integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+          crossorigin=""></script>
 
   <script>
-    // --- 1) Init Firebase ---
-    const firebaseConfig = {
-      apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
-      authDomain: "lead-f9f71.firebaseapp.com",
-      projectId: "lead-f9f71",
-      storageBucket: "lead-f9f71.firebasestorage.app",
-      messagingSenderId: "243276469711",
-      appId: "1:243276469711:web:1aea9eba2a33e1c8026eba",
-      measurementId: "G-BM1YRHR193"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+  //--- 1) Init Firebase ---
+  const firebaseConfig = {
+    apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
+    authDomain: "lead-f9f71.firebaseapp.com",
+    projectId: "lead-f9f71",
+    storageBucket: "lead-f9f71.firebasestorage.app",
+    messagingSenderId: "243276469711",
+    appId: "1:243276469711:web:1aea9eba2a33e1c8026eba",
+    measurementId: "G-BM1YRHR193"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
 
-    // --- 2) Prépare la grille hebdo ---
-    const weekRow      = document.getElementById('weekRow');
-    const weekLabel    = document.getElementById('weekLabel');
-    const prevWeekBtn  = document.getElementById('prevWeek');
-    const nextWeekBtn  = document.getElementById('nextWeek');
-    const monthPicker  = document.getElementById('monthPicker');
+  //--- 2) Variables & DOM refs ---
+  const weekRow    = document.getElementById('weekRow');
+  const weekLabel  = document.getElementById('weekLabel');
+  const prevWeek   = document.getElementById('prevWeek');
+  const nextWeek   = document.getElementById('nextWeek');
+  const monthPicker= document.getElementById('monthPicker');
+  const toggleView = document.getElementById('toggleView');
+  const weekView   = document.getElementById('weekView');
+  const monthView  = document.getElementById('monthView');
+  const monthHeader= document.getElementById('monthHeader');
+  const monthBody  = document.getElementById('monthBody');
+  const modal      = document.getElementById('modal');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalClient= document.getElementById('modalClient');
+  const modalQty   = document.getElementById('modalQty');
+  const modalSave  = document.getElementById('modalSave');
+  const modalCancel= document.getElementById('modalCancel');
 
-    // Calcul d'un lundi donné
-    function startOfWeek(date) {
-      const d = new Date(date);
-      const day = d.getDay(); 
-      const diff = d.getDate() - day; // dimanche=0, lundi=1
-      return new Date(d.setDate(diff));
+  let currentMonday = startOfWeek(new Date());
+  let viewIsMonth = false;
+  let clientsList = [], activeDate = null;
+
+  //--- Fonctions date ---
+  function startOfWeek(d) {
+    const day = d.getDay(), diff = d.getDate() - day;
+    return new Date(d.setDate(diff));
+  }
+  function fmt(d) { return d.toISOString().slice(0,10); }
+
+  //--- Chargement clients dans dropdown modal ---
+  async function loadClients() {
+    const snap = await db.collection('clients').get();
+    clientsList = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    modalClient.innerHTML = '';
+    clientsList.forEach(c=>{
+      const o = document.createElement('option');
+      o.value=c.id; o.text=`${c.firstName} ${c.lastName}`;
+      modalClient.append(o);
+    });
+  }
+
+  //--- Rendu VUE HEBDO ---
+  function renderWeek() {
+    const mon = currentMonday;
+    const sun = new Date(mon);
+    sun.setDate(mon.getDate()+6);
+    weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
+    weekRow.innerHTML = '';
+    for(let i=0;i<7;i++){
+      const d = new Date(mon);
+      d.setDate(mon.getDate()+i);
+      const td = document.createElement('td');
+      td.className='border align-top h-40 p-1 cursor-pointer';
+      td.dataset.date=fmt(d);
+      td.innerHTML=`<div class="font-semibold mb-1">${fmt(d)}</div><ul id="day-${fmt(d)}"></ul>`;
+      td.onclick = ()=>openModal(d);
+      weekRow.append(td);
     }
+    refreshDeliveries();
+  }
 
-    // Formate date display
-    function fmt(d) {
-      return d.toISOString().slice(0,10);
+  //--- Rendu VUE MENSUELLE ---
+  function renderMonth() {
+    const [y,m] = monthPicker.value.split('-').map(Number);
+    const first = new Date(y,m-1,1);
+    const days = new Date(y,m,0).getDate();
+    monthHeader.innerHTML = '';
+    monthBody.innerHTML = '';
+    for(let d=1; d<=days; d++){
+      const tdHead = document.createElement('th');
+      tdHead.className='border p-1'; tdHead.textContent=d;
+      monthHeader.append(tdHead);
+      const tdBody = document.createElement('td');
+      tdBody.className='border h-32 p-1 cursor-pointer';
+      const dateStr = fmt(new Date(y,m-1,d));
+      tdBody.dataset.date=dateStr;
+      tdBody.innerHTML=`<ul id="mon-${dateStr}"></ul>`;
+      tdBody.onclick = ()=>openModal(new Date(y,m-1,d));
+      monthBody.append(tdBody);
     }
+    refreshDeliveries();
+  }
 
-    let currentMonday = startOfWeek(new Date());
-
-    // Affiche la semaine et construit les cellules
-    function renderWeek() {
-      // monday
-      const mon = currentMonday;
-      // label
-      const sun = new Date(mon);
-      sun.setDate(mon.getDate() + 6);
-      weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
-
-      // clear et créer 7 cellules
-      weekRow.innerHTML = '';
-      for (let i=0; i<7; i++) {
-        const cellDate = new Date(mon);
-        cellDate.setDate(mon.getDate() + i);
-        const td = document.createElement('td');
-        td.className = 'border align-top h-40 p-1 cursor-pointer';
-        td.dataset.date = fmt(cellDate);
-        // header date
-        td.innerHTML = `<div class="font-semibold mb-1">${fmt(cellDate)}</div>`;
-        // zone livraisons
-        const ul = document.createElement('ul');
-        ul.id = `day-${fmt(cellDate)}`;
-        td.append(ul);
-        // click pour ajouter
-        td.addEventListener('click', () => addDelivery(cellDate));
-        weekRow.append(td);
+  //--- Basculer vue ---
+  toggleView.onclick = ()=>{
+    viewIsMonth = !viewIsMonth;
+    if(viewIsMonth) {
+      weekView.classList.add('hidden');
+      monthView.classList.remove('hidden');
+      toggleView.textContent='Vue hebdo';
+      if(!monthPicker.value) {
+        const today=new Date();
+        monthPicker.value=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
       }
-      refreshDeliveries();
-    }
-
-    // navigation
-    prevWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()-7); renderWeek(); }
-    nextWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()+7); renderWeek(); }
-
-    // vue mois (optionnelle : saute à la première semaine du mois)
-    monthPicker.onchange = () => {
-      const [y,m] = monthPicker.value.split('-').map(Number);
-      currentMonday = startOfWeek(new Date(y, m-1, 1));
+      renderMonth();
+    } else {
+      monthView.classList.add('hidden');
+      weekView.classList.remove('hidden');
+      toggleView.textContent='Vue mensuelle';
       renderWeek();
-    };
-
-    // --- 3) Gestion des livraisons ---
-    // Liste clients pour prompt
-    let clientsList = [];
-    async function loadClientsList() {
-      const snap = await db.collection('clients').get();
-      clientsList = snap.docs.map(d=>({ id:d.id, ...d.data() }));
     }
+  };
 
-    // Ajout d’une livraison
-    async function addDelivery(date) {
-      await loadClientsList();
-      // prompt choix client
-      const labelClients = clientsList.map((c,i)=>`${i+1}. ${c.firstName} ${c.lastName}`).join('\n');
-      const idx = parseInt(prompt(`Choisir un client (numéro)\n${labelClients}`),10) -1;
-      if (idx<0 || idx>=clientsList.length) return alert('Client invalide');
-      const qty = parseInt(prompt('Quantité de leads livrés :'),10);
-      if (isNaN(qty) || qty<0) return alert('Quantité invalide');
-      // date formatted
-      const dstr = fmt(date);
-      await db.collection('leads').add({
-        clientId: clientsList[idx].id,
-        date: dstr,
-        quantity: qty
-      });
-    }
+  prevWeek.onclick = ()=>{ currentMonday.setDate(currentMonday.getDate()-7); renderWeek(); };
+  nextWeek.onclick = ()=>{ currentMonday.setDate(currentMonday.getDate()+7); renderWeek(); };
+  monthPicker.onchange = ()=>{ if(viewIsMonth) renderMonth(); };
 
-    // Affichage des livraisons
-    async function refreshDeliveries() {
-      // vide tous les ul
-      weekRow.querySelectorAll('ul').forEach(ul=>ul.innerHTML='');
-      // calc semaine
-      const dates = [];
-      for (let i=0;i<7;i++){
-        const d=new Date(currentMonday);
-        d.setDate(currentMonday.getDate()+i);
-        dates.push(fmt(d));
-      }
-      // requête leads de la semaine
-      const snap = await db.collection('leads')
-        .where('date', 'in', dates).get();
-      snap.docs.forEach(doc=>{
-        const { clientId, quantity, date } = doc.data();
-        const c = clientsList.find(x=>x.id===clientId);
-        if (!c) return;
-        const ul = document.getElementById(`day-${date}`);
-        const li = document.createElement('li');
-        li.textContent = `${c.firstName} ${c.lastName} : ${quantity}`;
-        ul.append(li);
-      });
-    }
+  //--- Modal ---
+  function openModal(date) {
+    activeDate = fmt(date);
+    modalTitle.textContent = `Livraisons du ${activeDate}`;
+    loadClients();
+    modalQty.value='';
+    modal.classList.remove('hidden');
+  }
+  modalCancel.onclick = ()=> modal.classList.add('hidden');
 
-    // Rechargement temps réel
-    db.collection('leads').onSnapshot(() => refreshDeliveries());
+  modalSave.onclick = async ()=>{
+    const clientId = modalClient.value;
+    const qty = parseInt(modalQty.value,10);
+    if(!clientId||isNaN(qty)) return alert('Client et quantité obligatoires');
+    await db.collection('leads').add({ clientId, date:activeDate, quantity:qty });
+    modal.classList.add('hidden');
+  };
 
-    // initialisation
-    loadClientsList().then(renderWeek);
+  //--- Affichage données ---
+  async function refreshDeliveries() {
+    // clear all
+    document.querySelectorAll('ul[id^="day-"],ul[id^="mon-"]').forEach(ul=>ul.innerHTML='');
+    const dates = viewIsMonth
+      ? Array.from(monthBody.children).map(td=>td.dataset.date)
+      : Array.from(weekRow.children).map(td=>td.dataset.date);
+
+    const snap = await db.collection('leads').where('date','in',dates).get();
+    snap.docs.forEach(doc=>{
+      const { clientId, quantity, date } = doc.data();
+      const c = clientsList.find(x=>x.id===clientId);
+      if(!c) return;
+      const ul = document.getElementById(
+        viewIsMonth ? `mon-${date}` : `day-${date}`
+      );
+      const li = document.createElement('li');
+      li.textContent = `${c.firstName} ${c.lastName} : ${quantity}`;
+      ul.append(li);
+    });
+  }
+
+  // snapshot temps réel
+  db.collection('leads').onSnapshot(async ()=> {
+    await loadClients();
+    if(viewIsMonth) renderMonth(); else renderWeek();
+  });
+
+  // init
+  renderWeek();
   </script>
 </body>
 </html>
