@@ -2,9 +2,10 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8"/>
-  <title>Livraisons – Totaux journaliers</title>
+  <title>Livraisons – Édition journalière</title>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col h-screen">
 
@@ -36,24 +37,35 @@
 
   <!-- MODAL D'ÉDITION -->
   <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
-    <div class="bg-white p-6 rounded shadow w-80">
+    <div class="bg-white p-6 rounded shadow-lg w-96 max-h-[80vh] overflow-auto">
       <h2 class="text-lg font-semibold mb-4">Livraisons du <span id="modalDate"></span></h2>
-      <div class="space-y-3">
-        <label class="block">Client
-          <select id="modalClient" class="w-full border p-2 rounded"></select>
-        </label>
-        <label class="block">Quantité de leads
-          <input type="number" id="modalQty" class="w-full border p-2 rounded" min="0"/>
-        </label>
+
+      <!-- Tableau des lignes département/quantité -->
+      <table class="w-full text-sm border-collapse mb-4">
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="border p-1">Dépt</th>
+            <th class="border p-1">Quantité</th>
+            <th class="border p-1">Suppr.</th>
+          </tr>
+        </thead>
+        <tbody id="modalTableBody"></tbody>
+      </table>
+
+      <!-- Ajout nouvelle ligne -->
+      <div class="mb-4 flex gap-2 items-center">
+        <select id="newDept" class="border p-1 rounded flex-1">
+          <option value="">— Dépt —</option>
+        </select>
+        <input type="number" id="newQty" min="1" placeholder="Qty"
+               class="border p-1 w-20 rounded"/>
+        <button id="addLine" class="px-2 py-1 bg-green-500 text-white rounded">➕</button>
       </div>
-      <div class="mt-4 flex justify-between items-center">
-        <button id="modalDelete" class="px-4 py-2 bg-red-500 text-white rounded hidden">
-          Supprimer
-        </button>
-        <div class="flex gap-2">
-          <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
-          <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
-        </div>
+
+      <!-- Actions -->
+      <div class="flex justify-between">
+        <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+        <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
       </div>
     </div>
   </div>
@@ -64,7 +76,7 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // 1) Init Firebase
+    // init Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -77,26 +89,26 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // 2) DOM refs
-    const headerRow     = document.getElementById('headerRow');
-    const weekRow       = document.getElementById('weekRow');
-    const weekLabel     = document.getElementById('weekLabel');
-    const prevWeekBtn   = document.getElementById('prevWeek');
-    const nextWeekBtn   = document.getElementById('nextWeek');
-    const modalOverlay  = document.getElementById('modalOverlay');
-    const modalDateEl   = document.getElementById('modalDate');
-    const modalClient   = document.getElementById('modalClient');
-    const modalQty      = document.getElementById('modalQty');
-    const modalSaveBtn  = document.getElementById('modalSave');
-    const modalCancelBtn= document.getElementById('modalCancel');
-    const modalDeleteBtn= document.getElementById('modalDelete');
+    // DOM refs
+    const headerRow    = document.getElementById('headerRow');
+    const weekRow      = document.getElementById('weekRow');
+    const weekLabel    = document.getElementById('weekLabel');
+    const prevWeekBtn  = document.getElementById('prevWeek');
+    const nextWeekBtn  = document.getElementById('nextWeek');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalDateEl  = document.getElementById('modalDate');
+    const modalTable   = document.getElementById('modalTableBody');
+    const newDeptSel   = document.getElementById('newDept');
+    const newQtyInput  = document.getElementById('newQty');
+    const addLineBtn   = document.getElementById('addLine');
+    const modalCancel  = document.getElementById('modalCancel');
+    const modalSave    = document.getElementById('modalSave');
 
-    // 3) État
     let currentMonday = startOfWeek(new Date());
     let clients = [], deliveries = [];
-    let editingId = null, editingDate = null;
+    let editingDate = null;
 
-    // Helpers
+    // helper dates
     function startOfWeek(d) {
       const day = d.getDay(), diff = d.getDate() - day;
       return new Date(d.setDate(diff));
@@ -105,125 +117,174 @@
       return d.toISOString().slice(0,10);
     }
 
-    // 4) Charger clients
+    // load clients (pour dropdown si besoin)
     async function loadClients() {
       const snap = await db.collection('clients').get();
-      clients = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      modalClient.innerHTML = '';
-      clients.forEach(c => {
-        const o = document.createElement('option');
-        o.value = c.id;
-        o.text  = `${c.firstName||''} ${c.lastName||''}`.trim();
-        modalClient.append(o);
-      });
+      clients = snap.docs.map(d=>({ id:d.id, ...d.data() }));
     }
 
-    // 5) Charger livraisons (un doc par date/client)
+    // load all leads (un doc = un département pour une date)
     async function loadDeliveries() {
       const snap = await db.collection('leads').get();
-      deliveries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      deliveries = snap.docs.map(d=>({ id:d.id, ...d.data() }));
       renderWeek();
     }
 
-    // 6) Rendu hebdomadaire (total par jour)
+    // render week: total only
     function renderWeek() {
       const mon = startOfWeek(new Date(currentMonday));
       const sun = new Date(mon); sun.setDate(mon.getDate()+6);
       weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
 
-      // header
       headerRow.innerHTML = '';
       ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'].forEach(day => {
         const th = document.createElement('th');
-        th.className = 'border p-2';
-        th.textContent = day;
+        th.className = 'border p-2'; th.textContent = day;
         headerRow.append(th);
       });
 
-      // days
       weekRow.innerHTML = '';
-      for (let i = 0; i < 7; i++) {
+      for (let i=0; i<7; i++) {
         const d = new Date(mon); d.setDate(mon.getDate()+i);
         const ds = fmt(d);
-        // trouver document pour cette date (dernier ajouté)
-        const doc = deliveries.find(x => x.date === ds);
-        const qty = doc ? doc.quantity : 0;
+        const total = deliveries
+          .filter(x=>x.date===ds)
+          .reduce((sum,x)=> sum + x.quantity, 0);
 
         const td = document.createElement('td');
         td.className = 'border align-top h-32 p-1 cursor-pointer';
         td.dataset.date = ds;
         td.innerHTML = `
           <div class="font-semibold mb-1">${ds}</div>
-          <div class="text-lg">${qty} lead${qty>1?'s':''}</div>
+          <div class="text-lg">${total} lead${total>1?'s':''}</div>
         `;
-        td.onclick = () => openModal(ds, doc ? doc.id : null);
+        td.onclick = () => openModal(ds);
         weekRow.append(td);
       }
     }
 
-    // navigation
-    prevWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate() - 7);
+    prevWeekBtn.onclick = ()=>{
+      currentMonday.setDate(currentMonday.getDate()-7);
       renderWeek();
     };
-    nextWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate() + 7);
+    nextWeekBtn.onclick = ()=>{
+      currentMonday.setDate(currentMonday.getDate()+7);
       renderWeek();
     };
 
-    // modal open/close
-    function openModal(date, id) {
+    // open modal: list lines for that date
+    function openModal(date) {
       editingDate = date;
-      editingId   = id;
       modalDateEl.textContent = date;
-      // si existant, charger valeur
-      if (id) {
-        const e = deliveries.find(x => x.id === id);
-        modalClient.value = e.clientId;
-        modalQty.value    = e.quantity;
-        modalDeleteBtn.classList.remove('hidden');
-      } else {
-        modalClient.selectedIndex = 0;
-        modalQty.value = '';
-        modalDeleteBtn.classList.add('hidden');
-      }
+      populateModal();
       modalOverlay.classList.remove('hidden');
     }
-    modalCancelBtn.onclick = () => modalOverlay.classList.add('hidden');
+    modalCancel.onclick = ()=> modalOverlay.classList.add('hidden');
 
-    // save or update
-    modalSaveBtn.onclick = async () => {
-      const cid = modalClient.value;
-      const q   = parseInt(modalQty.value, 10);
-      if (!cid) return alert('Sélectionnez un client');
-      if (isNaN(q) || q < 0) return alert('Quantité invalide');
+    // populate modal table + dept dropdown
+    function populateModal() {
+      modalTable.innerHTML = '';
+      newDeptSel.innerHTML = '<option value="">— Dépt —</option>';
 
-      if (editingId) {
-        await db.collection('leads').doc(editingId).update({
-          clientId: cid,
-          quantity: q
-        });
-      } else {
-        await db.collection('leads').add({
-          date:       editingDate,
-          clientId:   cid,
-          quantity:   q
-        });
+      // existing entries
+      const entries = deliveries.filter(x=>x.date===editingDate);
+      entries.forEach(e=>{
+        const tr = document.createElement('tr');
+        tr.dataset.id = e.id;
+        tr.innerHTML = `
+          <td class="border p-1">${e.department}</td>
+          <td class="border p-1">
+            <input type="number" class="qty" value="${e.quantity}" min="1"
+                   class="w-16 border p-1 rounded"/>
+          </td>
+          <td class="border p-1 text-center">
+            <button class="del">🗑️</button>
+          </td>
+        `;
+        modalTable.append(tr);
+      });
+
+      // build dept list (static 95 codes) minus used
+      const used = new Set(entries.map(e=>e.department));
+      const all = ["01","02","03","04","05","06","07","08","09","10","11","12","13","14","15",
+        "16","17","18","19","2A","2B","21","22","23","24","25","26","27","28","29",
+        "30","31","32","33","34","35","36","37","38","39","40","41","42","43","44",
+        "45","46","47","48","49","50","51","52","53","54","55","56","57","58","59",
+        "60","61","62","63","64","65","66","67","68","69","70","71","72","73","74",
+        "75","76","77","78","79","80","81","82","83","84","85","86","87","88","89",
+        "90","91","92","93","94","95"];
+      all.forEach(dep=>{
+        if(!used.has(dep)){
+          const o = document.createElement('option');
+          o.value = dep; o.text = dep;
+          newDeptSel.append(o);
+        }
+      });
+    }
+
+    // add new line
+    addLineBtn.onclick = ()=>{
+      const dep = newDeptSel.value;
+      const qty = parseInt(newQtyInput.value,10);
+      if(!dep) return alert('Sélectionne un département');
+      if(!qty||qty<1) return alert('Quantité invalide');
+      const tr = document.createElement('tr');
+      tr.dataset.id = '';
+      tr.innerHTML=`
+        <td class="border p-1">${dep}</td>
+        <td class="border p-1">
+          <input type="number" class="qty" value="${qty}" min="1"/>
+        </td>
+        <td class="border p-1 text-center">
+          <button class="del">🗑️</button>
+        </td>`;
+      modalTable.append(tr);
+      newDeptSel.querySelector(`option[value="${dep}"]`).remove();
+      newQtyInput.value = '';
+    };
+
+    // delete line
+    modalTable.addEventListener('click', e=>{
+      if(e.target.classList.contains('del')){
+        const tr = e.target.closest('tr');
+        const dep=tr.children[0].textContent;
+        // re-add to dropdown
+        const o=document.createElement('option');
+        o.value=dep; o.text=dep;
+        newDeptSel.append(o);
+        tr.remove();
       }
+    });
+
+    // save batch
+    modalSave.onclick = async ()=>{
+      const batch = db.batch();
+      Array.from(modalTable.children).forEach(tr=>{
+        const id = tr.dataset.id;
+        const dep = tr.children[0].textContent;
+        const qty = parseInt(tr.querySelector('.qty').value,10);
+        if(id){
+          if(qty>0){
+            batch.update(db.collection('leads').doc(id),{ quantity:qty });
+          } else {
+            batch.delete(db.collection('leads').doc(id));
+          }
+        } else {
+          const ref=db.collection('leads').doc();
+          batch.set(ref,{
+            clientId:   /* tu peux proposer un dropdown client ici */,
+            date:       editingDate,
+            department: dep,
+            quantity:   qty
+          });
+        }
+      });
+      await batch.commit();
       modalOverlay.classList.add('hidden');
       await loadDeliveries();
     };
 
-    // delete
-    modalDeleteBtn.onclick = async () => {
-      if (editingId && confirm('Supprimer cette livraison ?')) {
-        await db.collection('leads').doc(editingId).delete();
-        modalOverlay.classList.add('hidden');
-        await loadDeliveries();
-      }
-    };
-
-    // init
+    // startup
     loadClients().then(loadDeliveries);
   });
   </script>
