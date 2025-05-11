@@ -2,9 +2,10 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8"/>
-  <title>Livraisons – Édition journalière</title>
+  <title>Livraisons – Import Excel par Département</title>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS pour la lecture Excel -->
   <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col h-screen">
@@ -20,14 +21,14 @@
     </nav>
   </header>
 
-  <!-- CONTRÔLES SEMAINE -->
+  <!-- CONTROLES DE SEMAINE -->
   <div class="p-4 bg-white flex items-center gap-4">
     <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Sem préc.</button>
     <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Sem suiv. →</button>
     <span id="weekLabel" class="font-medium"></span>
   </div>
 
-  <!-- GRILLE HEBDO -->
+  <!-- AFFICHAGE HEBDO -->
   <div class="flex-1 overflow-auto p-4 bg-white">
     <table class="w-full table-fixed border-collapse">
       <thead><tr id="headerRow"></tr></thead>
@@ -35,37 +36,24 @@
     </table>
   </div>
 
-  <!-- MODAL D'ÉDITION -->
+  <!-- MODAL D'IMPORT / ÉDITION -->
   <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
-    <div class="bg-white p-6 rounded shadow-lg w-96 max-h-[80vh] overflow-auto">
-      <h2 class="text-lg font-semibold mb-4">Livraisons du <span id="modalDate"></span></h2>
-
-      <!-- Tableau des lignes département/quantité -->
-      <table class="w-full text-sm border-collapse mb-4">
-        <thead class="bg-gray-100">
-          <tr>
-            <th class="border p-1">Dépt</th>
-            <th class="border p-1">Quantité</th>
-            <th class="border p-1">Suppr.</th>
-          </tr>
-        </thead>
-        <tbody id="modalTableBody"></tbody>
-      </table>
-
-      <!-- Ajout nouvelle ligne -->
-      <div class="mb-4 flex gap-2 items-center">
-        <select id="newDept" class="border p-1 rounded flex-1">
-          <option value="">— Dépt —</option>
-        </select>
-        <input type="number" id="newQty" min="1" placeholder="Qty"
-               class="border p-1 w-20 rounded"/>
-        <button id="addLine" class="px-2 py-1 bg-green-500 text-white rounded">➕</button>
+    <div class="bg-white p-6 rounded shadow w-80">
+      <h2 id="modalTitle" class="text-lg font-semibold mb-4">Importer leads</h2>
+      <div class="space-y-3">
+        <label class="block">Client
+          <select id="modalClient" class="w-full border p-2 rounded"></select>
+        </label>
+        <label class="block">Fichier Excel (ton modèle vierge)
+          <input type="file" id="modalFile" accept=".xlsx,.xls" class="w-full border p-2 rounded"/>
+        </label>
       </div>
-
-      <!-- Actions -->
-      <div class="flex justify-between">
-        <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
-        <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
+      <div class="mt-4 flex justify-between items-center">
+        <button id="modalDelete" class="px-4 py-2 bg-red-500 text-white rounded hidden">Suppr.</button>
+        <div class="flex gap-2">
+          <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+          <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
+        </div>
       </div>
     </div>
   </div>
@@ -76,7 +64,7 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // init Firebase
+    // --- Initialisation Firebase ---
     const firebaseConfig = {
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -89,26 +77,27 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // DOM refs
-    const headerRow    = document.getElementById('headerRow');
-    const weekRow      = document.getElementById('weekRow');
-    const weekLabel    = document.getElementById('weekLabel');
-    const prevWeekBtn  = document.getElementById('prevWeek');
-    const nextWeekBtn  = document.getElementById('nextWeek');
-    const modalOverlay = document.getElementById('modalOverlay');
-    const modalDateEl  = document.getElementById('modalDate');
-    const modalTable   = document.getElementById('modalTableBody');
-    const newDeptSel   = document.getElementById('newDept');
-    const newQtyInput  = document.getElementById('newQty');
-    const addLineBtn   = document.getElementById('addLine');
-    const modalCancel  = document.getElementById('modalCancel');
-    const modalSave    = document.getElementById('modalSave');
+    // --- Références DOM ---
+    const headerRow   = document.getElementById('headerRow');
+    const weekRow     = document.getElementById('weekRow');
+    const weekLabel   = document.getElementById('weekLabel');
+    const prevWeekBtn = document.getElementById('prevWeek');
+    const nextWeekBtn = document.getElementById('nextWeek');
 
+    const modalOverlay  = document.getElementById('modalOverlay');
+    const modalTitle    = document.getElementById('modalTitle');
+    const modalClient   = document.getElementById('modalClient');
+    const modalFile     = document.getElementById('modalFile');
+    const modalSaveBtn  = document.getElementById('modalSave');
+    const modalCancelBtn= document.getElementById('modalCancel');
+    const modalDeleteBtn= document.getElementById('modalDelete');
+
+    // --- État ---
     let currentMonday = startOfWeek(new Date());
     let clients = [], deliveries = [];
-    let editingDate = null;
+    let editingId = null, editingDate = null;
 
-    // helper dates
+    // --- Helpers date ---
     function startOfWeek(d) {
       const day = d.getDay(), diff = d.getDate() - day;
       return new Date(d.setDate(diff));
@@ -117,174 +106,164 @@
       return d.toISOString().slice(0,10);
     }
 
-    // load clients (pour dropdown si besoin)
+    // --- Chargement clients pour <select> ---
     async function loadClients() {
       const snap = await db.collection('clients').get();
-      clients = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+      clients = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+      modalClient.innerHTML = '';
+      clients.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.text  = `${c.firstName||''} ${c.lastName||''}`.trim();
+        modalClient.append(o);
+      });
     }
 
-    // load all leads (un doc = un département pour une date)
+    // --- Chargement de tous les leads depuis Firestore ---
     async function loadDeliveries() {
       const snap = await db.collection('leads').get();
-      deliveries = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+      deliveries = snap.docs.map(d => ({ id:d.id, ...d.data() }));
       renderWeek();
     }
 
-    // render week: total only
+    // --- Rendu de la grille hebdo ---
     function renderWeek() {
       const mon = startOfWeek(new Date(currentMonday));
-      const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
       weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
 
+      // En-tête
       headerRow.innerHTML = '';
       ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'].forEach(day => {
         const th = document.createElement('th');
-        th.className = 'border p-2'; th.textContent = day;
+        th.className = 'border p-2';
+        th.textContent = day;
         headerRow.append(th);
       });
 
+      // Cases journalières
       weekRow.innerHTML = '';
-      for (let i=0; i<7; i++) {
-        const d = new Date(mon); d.setDate(mon.getDate()+i);
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(mon); d.setDate(mon.getDate() + i);
         const ds = fmt(d);
-        const total = deliveries
-          .filter(x=>x.date===ds)
-          .reduce((sum,x)=> sum + x.quantity, 0);
-
         const td = document.createElement('td');
         td.className = 'border align-top h-32 p-1 cursor-pointer';
         td.dataset.date = ds;
-        td.innerHTML = `
-          <div class="font-semibold mb-1">${ds}</div>
-          <div class="text-lg">${total} lead${total>1?'s':''}</div>
-        `;
+        td.innerHTML = `<div class="font-semibold mb-1">${ds}</div>`;
         td.onclick = () => openModal(ds);
         weekRow.append(td);
       }
+
+      // Afficher les imports existants
+      deliveries
+        .filter(x => x.date >= fmt(mon) && x.date <= fmt(sun))
+        .forEach(appendDelivery);
     }
 
-    prevWeekBtn.onclick = ()=>{
-      currentMonday.setDate(currentMonday.getDate()-7);
+    // --- Ajout d’une entrée (par département) ---
+    function appendDelivery(entry) {
+      const td = document.querySelector(`td[data-date="${entry.date}"]`);
+      if (!td) return;
+      const div = document.createElement('div');
+      div.className = 'p-1 bg-gray-100 mb-1 cursor-pointer';
+      const cli = clients.find(c => c.id === entry.clientId) || {};
+      div.textContent = `${cli.firstName||''} ${cli.lastName||''} [${entry.department}]: ${entry.quantity}`;
+      div.onclick = e => {
+        e.stopPropagation();
+        openModal(entry.date, entry.id);
+      };
+      td.append(div);
+    }
+
+    // --- Navigation entre semaines ---
+    prevWeekBtn.onclick = () => {
+      currentMonday.setDate(currentMonday.getDate() - 7);
       renderWeek();
     };
-    nextWeekBtn.onclick = ()=>{
-      currentMonday.setDate(currentMonday.getDate()+7);
+    nextWeekBtn.onclick = () => {
+      currentMonday.setDate(currentMonday.getDate() + 7);
       renderWeek();
     };
 
-    // open modal: list lines for that date
-    function openModal(date) {
+    // --- Ouverture / fermeture du modal ---
+    function openModal(date, id = null) {
       editingDate = date;
-      modalDateEl.textContent = date;
-      populateModal();
+      editingId   = id;
+      modalTitle.textContent = id ? `Modifier ${date}` : `Importer ${date}`;
+      modalFile.value = null;
+      modalDeleteBtn.classList.toggle('hidden', !id);
       modalOverlay.classList.remove('hidden');
     }
-    modalCancel.onclick = ()=> modalOverlay.classList.add('hidden');
+    modalCancelBtn.onclick = () => modalOverlay.classList.add('hidden');
 
-    // populate modal table + dept dropdown
-    function populateModal() {
-      modalTable.innerHTML = '';
-      newDeptSel.innerHTML = '<option value="">— Dépt —</option>';
+    // --- Enregistrement par département ---
+    modalSaveBtn.onclick = async () => {
+      const cid  = modalClient.value;
+      const file = modalFile.files[0];
+      if (!cid)  return alert('Sélectionnez un client');
+      if (!file) return alert('Choisissez un fichier Excel');
 
-      // existing entries
-      const entries = deliveries.filter(x=>x.date===editingDate);
-      entries.forEach(e=>{
-        const tr = document.createElement('tr');
-        tr.dataset.id = e.id;
-        tr.innerHTML = `
-          <td class="border p-1">${e.department}</td>
-          <td class="border p-1">
-            <input type="number" class="qty" value="${e.quantity}" min="1"
-                   class="w-16 border p-1 rounded"/>
-          </td>
-          <td class="border p-1 text-center">
-            <button class="del">🗑️</button>
-          </td>
-        `;
-        modalTable.append(tr);
-      });
+      // Lecture du fichier en array of arrays
+      const data  = await file.arrayBuffer();
+      const wb    = XLSX.read(data);
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const arr   = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      if (arr.length < 2) return alert('Le fichier est vide ou sans en-tête');
 
-      // build dept list (static 95 codes) minus used
-      const used = new Set(entries.map(e=>e.department));
-      const all = ["01","02","03","04","05","06","07","08","09","10","11","12","13","14","15",
-        "16","17","18","19","2A","2B","21","22","23","24","25","26","27","28","29",
-        "30","31","32","33","34","35","36","37","38","39","40","41","42","43","44",
-        "45","46","47","48","49","50","51","52","53","54","55","56","57","58","59",
-        "60","61","62","63","64","65","66","67","68","69","70","71","72","73","74",
-        "75","76","77","78","79","80","81","82","83","84","85","86","87","88","89",
-        "90","91","92","93","94","95"];
-      all.forEach(dep=>{
-        if(!used.has(dep)){
-          const o = document.createElement('option');
-          o.value = dep; o.text = dep;
-          newDeptSel.append(o);
+      // Repérer la colonne "code postal" dynamiquement
+      const headers = arr[0].map(h => String(h).toLowerCase());
+      const idxPostal = headers.findIndex(h =>
+        h.includes('postal') || h.includes('code')
+      );
+      if (idxPostal < 0) return alert('Colonne “Code Postal” introuvable');
+
+      // Comptage par département (2 premiers caractères)
+      const counts = {};
+      arr.slice(1).forEach(row => {
+        const cp = String(row[idxPostal] || '').trim();
+        if (!cp) return;
+        let dep = cp.slice(0,2);
+        // Gestion particulière de la Corse (20xxx → 2A/2B)
+        if (dep === '20' && cp.length >= 3) {
+          const digit = parseInt(cp.charAt(2),10);
+          dep = digit < 2 ? '2A' : '2B';
         }
+        counts[dep] = (counts[dep] || 0) + 1;
       });
-    }
-
-    // add new line
-    addLineBtn.onclick = ()=>{
-      const dep = newDeptSel.value;
-      const qty = parseInt(newQtyInput.value,10);
-      if(!dep) return alert('Sélectionne un département');
-      if(!qty||qty<1) return alert('Quantité invalide');
-      const tr = document.createElement('tr');
-      tr.dataset.id = '';
-      tr.innerHTML=`
-        <td class="border p-1">${dep}</td>
-        <td class="border p-1">
-          <input type="number" class="qty" value="${qty}" min="1"/>
-        </td>
-        <td class="border p-1 text-center">
-          <button class="del">🗑️</button>
-        </td>`;
-      modalTable.append(tr);
-      newDeptSel.querySelector(`option[value="${dep}"]`).remove();
-      newQtyInput.value = '';
-    };
-
-    // delete line
-    modalTable.addEventListener('click', e=>{
-      if(e.target.classList.contains('del')){
-        const tr = e.target.closest('tr');
-        const dep=tr.children[0].textContent;
-        // re-add to dropdown
-        const o=document.createElement('option');
-        o.value=dep; o.text=dep;
-        newDeptSel.append(o);
-        tr.remove();
+      if (Object.keys(counts).length === 0) {
+        return alert('Aucune donnée de code postal valide trouvée');
       }
-    });
 
-    // save batch
-    modalSave.onclick = async ()=>{
+      // Écriture Firestore (un doc par département)
       const batch = db.batch();
-      Array.from(modalTable.children).forEach(tr=>{
-        const id = tr.dataset.id;
-        const dep = tr.children[0].textContent;
-        const qty = parseInt(tr.querySelector('.qty').value,10);
-        if(id){
-          if(qty>0){
-            batch.update(db.collection('leads').doc(id),{ quantity:qty });
-          } else {
-            batch.delete(db.collection('leads').doc(id));
-          }
-        } else {
-          const ref=db.collection('leads').doc();
-          batch.set(ref,{
-            clientId:   /* tu peux proposer un dropdown client ici */,
-            date:       editingDate,
-            department: dep,
-            quantity:   qty
-          });
-        }
+      if (editingId) {
+        batch.delete(db.collection('leads').doc(editingId));
+      }
+      Object.entries(counts).forEach(([dep,qty]) => {
+        const ref = db.collection('leads').doc();
+        batch.set(ref, {
+          clientId:   cid,
+          date:       editingDate,
+          department: dep,
+          quantity:   qty
+        });
       });
       await batch.commit();
+
       modalOverlay.classList.add('hidden');
       await loadDeliveries();
     };
 
-    // startup
+    // --- Suppression d’un import existant ---
+    modalDeleteBtn.onclick = async () => {
+      if (editingId && confirm('Supprimer cet import ?')) {
+        await db.collection('leads').doc(editingId).delete();
+        modalOverlay.classList.add('hidden');
+        await loadDeliveries();
+      }
+    };
+
+    // --- Démarrage initial ---
     loadClients().then(loadDeliveries);
   });
   </script>
