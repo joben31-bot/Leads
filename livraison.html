@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -78,20 +77,31 @@
           <input type="number" id="modalQty" class="w-full border p-2 rounded" min="0"/>
         </label>
       </div>
-    <div class="mt-4 flex justify-between items-center">
-  <!-- Supprimer à gauche -->
-  <button id="modalDelete"
-          class="bg-red-500 text-white rounded text-sm"
-          style="padding: 0.25rem 0.5rem; min-width:4rem;">
-    Supprimer
-  </button>
-  <!-- Annuler + Enregistrer à droite -->
-  <div class="flex gap-2">
-    <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
-    <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
-  </div>
-</div>
-
+      <!-- FOOTER DU MODAL : uniformisé -->
+      <div class="mt-4 flex justify-between items-center">
+        <!-- Supprimer à gauche -->
+        <button
+          id="modalDelete"
+          class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+        >
+          Supprimer
+        </button>
+        <!-- Annuler + Sauvegarder à droite -->
+        <div class="flex gap-2">
+          <button
+            id="modalCancel"
+            class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+          >
+            Annuler
+          </button>
+          <button
+            id="modalSave"
+            class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Sauvegarder
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -136,9 +146,9 @@
     // State
     let currentMonday = startOfWeek(new Date());
     let viewIsMonth = false;
-    let deliveries = []; // will hold {id, clientId, date, quantity}
-    let clients = [];    // will hold client list
-    let activeDelivery = null; // for edit
+    let deliveries = []; 
+    let clients = [];    
+    let activeDelivery = null;
 
     // Helpers
     function startOfWeek(d) {
@@ -183,7 +193,6 @@
         td.onclick = () => openModal(null, dateKey);
         weekRow.append(td);
       }
-      // populate entries
       deliveries.filter(x=> x.date>=fmt(mon) && x.date<=fmt(sun))
         .forEach(x => appendToCell(x));
     }
@@ -196,7 +205,7 @@
       for (let d=1; d<=days; d++){
         const dt = new Date(y,m-1,d), dateKey=fmt(dt);
         const th = document.createElement('th');
-        th.className='border p-1'; th.textContent=d;
+        th.className='border p-1'; th.textContent = d;
         monthHeader.append(th);
         const td = document.createElement('td');
         td.className='border h-32 p-1';
@@ -209,7 +218,7 @@
         .forEach(x => appendToCell(x));
     }
 
-    // Append one entry
+    // Append entry
     function appendToCell(entry) {
       const idDay = viewIsMonth ? `mon-${entry.date}` : `day-${entry.date}`;
       const ul = document.getElementById(idDay);
@@ -222,9 +231,9 @@
       ul.append(li);
     }
 
-    // Render view based on mode
+    // Render current
     function renderCurrentView() {
-      if (viewIsMonth) renderMonth(); else renderWeek();
+      viewIsMonth ? renderMonth() : renderWeek();
     }
 
     // Toggle view
@@ -243,11 +252,10 @@
     nextWeek.onclick = () => { currentMonday.setDate(currentMonday.getDate()+7); renderWeek(); };
     monthPicker.onchange = () => viewIsMonth && renderMonth();
 
-    // Modal
+    // Modal logic
     function openModal(id, dateKey) {
       activeDelivery = id;
       modalTitle.textContent = id ? 'Modifier livraison' : 'Ajouter livraison';
-      document.getElementById('modalClient').value = '';
       modalQty.value = '';
       modalDelete.classList.toggle('hidden', !id);
       modalSave.textContent = id ? 'Sauvegarder' : 'Enregistrer';
@@ -270,7 +278,6 @@
       };
       modalCancel.onclick = () => modal.classList.add('hidden');
 
-      // If editing, prefill
       if (id) {
         const entry = deliveries.find(x=>x.id===id);
         modalClient.value = entry.clientId;
@@ -279,7 +286,7 @@
       modal.classList.remove('hidden');
     }
 
-    // Real-time listeners
+    // Real-time
     db.collection('clients').onSnapshot(loadClients);
     db.collection('leads').onSnapshot(loadDeliveries);
 
