@@ -19,6 +19,15 @@
     </nav>
   </header>
 
+  <!-- FILTRE CLIENT -->
+  <div class="mb-4">
+    <label class="block mb-1 font-medium">
+      Filtrer par client (Ctrl+clic pour multisélection):
+    </label>
+    <select id="clientFilter" multiple size="5"
+            class="w-full border p-2 rounded bg-white"></select>
+  </div>
+
   <!-- PÉRIODE -->
   <div class="flex items-center gap-4 mb-6">
     <label>Du
@@ -27,12 +36,13 @@
     <label>Au
       <input type="date" id="endDate" class="border p-2 rounded"/>
     </label>
-    <button id="refreshBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+    <button id="refreshBtn"
+            class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
       Actualiser
     </button>
   </div>
 
-  <!-- CONTENEUR -->
+  <!-- CONTENEUR RAPPORT -->
   <div id="reportContainer" class="space-y-8"></div>
 
   <!-- Firebase SDKs -->
@@ -41,7 +51,7 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // Firebase
+    // Configuration Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -54,82 +64,109 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    const startDate  = document.getElementById('startDate');
-    const endDate    = document.getElementById('endDate');
-    const refreshBtn = document.getElementById('refreshBtn');
-    const container  = document.getElementById('reportContainer');
+    // Références DOM
+    const clientFilter = document.getElementById('clientFilter');
+    const startDate    = document.getElementById('startDate');
+    const endDate      = document.getElementById('endDate');
+    const refreshBtn   = document.getElementById('refreshBtn');
+    const container    = document.getElementById('reportContainer');
 
-    // défaut → 7 derniers jours
-    const today = new Date(), prior = new Date();
-    prior.setDate(today.getDate()-6);
+    // Initialisation période par défaut (7 derniers jours)
+    const today = new Date();
+    const prior = new Date();
+    prior.setDate(today.getDate() - 6);
     startDate.value = prior.toISOString().slice(0,10);
     endDate.value   = today.toISOString().slice(0,10);
 
+    let clientsMap = {};
+
+    // Charger la liste des clients dans le filtre
+    async function loadClients() {
+      const snap = await db.collection('clients').get();
+      snap.docs.forEach(d => {
+        const c = d.data();
+        clientsMap[d.id] = `${c.firstName} ${c.lastName}`.trim();
+        const o = document.createElement('option');
+        o.value    = d.id;
+        o.text     = clientsMap[d.id];
+        o.selected = true;  // cochés par défaut
+        clientFilter.append(o);
+      });
+    }
+
+    // Générer le rapport
     refreshBtn.onclick = async () => {
       container.innerHTML = '';
-      const sd = new Date(startDate.value), ed = new Date(endDate.value);
-      if (!sd||!ed||sd>ed) return alert('Période invalide');
+      const sd = new Date(startDate.value);
+      const ed = new Date(endDate.value);
+      if (!sd || !ed || sd > ed) {
+        return alert('Période invalide');
+      }
 
-      // liste dates
+      // Construire la liste des dates
       const dates = [];
-      for (let d=new Date(sd); d<=ed; d.setDate(d.getDate()+1)) {
+      for (let d = new Date(sd); d <= ed; d.setDate(d.getDate() + 1)) {
         dates.push(d.toISOString().slice(0,10));
       }
 
-      // charger leads
+      // Récupérer les clients sélectionnés
+      const selectedClients = Array.from(
+        clientFilter.selectedOptions
+      ).map(o => o.value);
+
+      // Récupérer les leads pour ces dates
       const snap = await db.collection('leads')
-        .where('date','in',dates).get();
-      const leads = snap.docs.map(d=>d.data());
+        .where('date','in', dates).get();
+      const leads = snap.docs.map(d => d.data());
 
-      // charger clients
-      const snapC = await db.collection('clients').get();
-      const clientsMap = {};
-      snapC.docs.forEach(d=>clientsMap[d.id]=d.data());
+      // Pour chaque date, grouper par client → département
+      dates.forEach(date => {
+        const dayData = {};
+        leads
+          .filter(l => l.date === date && selectedClients.includes(l.clientId))
+          .forEach(l => {
+            dayData[l.clientId] = dayData[l.clientId] || {};
+            const dept = l.department || '—';
+            dayData[l.clientId][dept] =
+              (dayData[l.clientId][dept] || 0) + l.quantity;
+          });
 
-      // grouper date → client → dept
-      const report={};
-      leads.forEach(({date,clientId,department,quantity})=>{
-        report[date]=report[date]||{};
-        report[date][clientId]=report[date][clientId]||{};
-        const d=department||'—';
-        report[date][clientId][d] =
-          (report[date][clientId][d]||0)+quantity;
-      });
-
-      // afficher
-      dates.forEach(date=>{
-        const dayData = report[date]||{};
+        // Créer section date
         const section = document.createElement('section');
-        section.innerHTML = `<h2 class="text-xl font-semibold mb-2">${date}</h2>`;
-        const table = document.createElement('table');
-        table.className='w-full table-auto border-collapse bg-white';
-        table.innerHTML=`
-          <thead class="bg-gray-100">
-            <tr>
-              <th class="border p-2">Client</th>
-              <th class="border p-2">Département</th>
-              <th class="border p-2">Leads</th>
-            </tr>
-          </thead>
-          <tbody></tbody>`;
-        const tbody = table.querySelector('tbody');
-        Object.entries(dayData).forEach(([cid,deps])=>{
-          const client=clientsMap[cid]||{};
-          Object.entries(deps).forEach(([dep,qty])=>{
-            const tr=document.createElement('tr');
-            tr.innerHTML=`
-              <td class="border p-2">${client.firstName||''} ${client.lastName||''}</td>
+        section.innerHTML = `
+          <h2 class="text-xl font-semibold mb-2">${date}</h2>
+          <table class="w-full table-auto border-collapse bg-white">
+            <thead class="bg-gray-100">
+              <tr>
+                <th class="border p-2">Client</th>
+                <th class="border p-2">Département</th>
+                <th class="border p-2">Leads</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        `;
+        const tbody = section.querySelector('tbody');
+
+        // Remplir le tableau
+        Object.entries(dayData).forEach(([cid,deps]) => {
+          Object.entries(deps).forEach(([dep,qty]) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td class="border p-2">${clientsMap[cid] || cid}</td>
               <td class="border p-2">${dep}</td>
-              <td class="border p-2 text-right">${qty}</td>`;
+              <td class="border p-2 text-right">${qty}</td>
+            `;
             tbody.append(tr);
           });
         });
-        section.append(table);
+
         container.append(section);
       });
     };
 
-    refreshBtn.click();
+    // Initialisation
+    loadClients().then(() => refreshBtn.click());
   });
   </script>
 </body>
