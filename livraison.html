@@ -1,132 +1,238 @@
-<!DOCTYPE html><html><head>
-  <meta charset="UTF-8">
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Livraisons – Agenda Hebdo</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS pour lire Excel -->
   <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
-</head><body class="p-4">
+</head>
+<body class="bg-gray-100 flex flex-col h-screen">
 
-  <div class="flex gap-2 mb-4">
-    <button id="prevWeek">←</button>
-    <button id="nextWeek">→</button>
-    <span id="weekLabel"></span>
-    <button id="toggleView">Vue mensuelle</button>
-    <input type="month" id="monthPicker">
+  <!-- NAVIGATION -->
+  <header class="bg-white shadow p-4 flex justify-between items-center">
+    <h1 class="text-2xl font-bold">Agenda Livraisons</h1>
+    <nav class="space-x-4 text-sm">
+      <a href="index.html"     class="hover:text-blue-600">Accueil</a>
+      <a href="clients.html"   class="hover:text-blue-600">Clients</a>
+      <a href="livraison.html" class="text-blue-600 font-semibold">Livraisons</a>
+      <a href="rapport.html"   class="hover:text-blue-600">Rapports</a>
+    </nav>
+  </header>
+
+  <!-- CONTRÔLES -->
+  <div class="p-4 bg-white flex items-center space-x-4">
+    <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Semaine préc.</button>
+    <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Semaine suiv. →</button>
+    <span id="weekLabel" class="font-medium"></span>
   </div>
 
-  <table class="table-fixed w-full border-collapse">
-    <thead><tr id="hdr"></tr></thead>
-    <tbody><tr id="weekRow"></tr></tbody>
-  </table>
+  <!-- AGENDA HEBDO -->
+  <div class="flex-1 overflow-auto p-4 bg-white">
+    <table class="w-full table-fixed border-collapse">
+      <thead>
+        <tr id="headerRow"></tr>
+      </thead>
+      <tbody>
+        <tr id="weekRow"></tr>
+      </tbody>
+    </table>
+  </div>
 
-  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden">
-    <div class="bg-white p-4 mx-auto mt-20 w-64">
-      <h2 id="modalTitle"></h2>
-      <select id="modalClient" class="w-full mb-2 border"></select>
-      <input type="file" id="modalFile" class="w-full mb-2 border"/>
-      <div class="flex justify-between">
-        <button id="modalCancel">Annuler</button>
-        <button id="modalSave">Importer</button>
+  <!-- MODAL IMPORT / ÉDITION -->
+  <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
+    <div class="bg-white p-6 rounded shadow-lg w-80">
+      <h2 class="text-lg font-semibold mb-4" id="modalTitle">Importer leads</h2>
+      <div class="space-y-3">
+        <label class="block">Client
+          <select id="modalClient" class="w-full border p-2 rounded"></select>
+        </label>
+        <label class="block">Fichier Excel
+          <input type="file" id="modalFile" accept=".xls,.xlsx" class="w-full border p-2 rounded"/>
+        </label>
+      </div>
+      <div class="mt-4 flex justify-between items-center">
+        <button id="modalDelete" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 hidden">
+          Supprimer
+        </button>
+        <div class="flex gap-2">
+          <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">Annuler</button>
+          <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+            Enregistrer
+          </button>
+        </div>
       </div>
     </div>
   </div>
 
-<script>
-document.addEventListener('DOMContentLoaded',()=>{
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 
-  // Firebase init
-  firebase.initializeApp({ /* ta config */ });
-  const db = firebase.firestore();
+  <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    // 1) Initialisation Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
+      authDomain: "lead-f9f71.firebaseapp.com",
+      projectId: "lead-f9f71",
+      storageBucket: "lead-f9f71.firebasestorage.app",
+      messagingSenderId: "243276469711",
+      appId: "1:243276469711:web:1aea9eba2a33e1c8026eba",
+      measurementId: "G-BM1YRHR193"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
 
-  // State + refs
-  let currentMonday=new Date(), viewIsMonth=false;
-  const weekRow=document.getElementById('weekRow');
-  const weekLabel=document.getElementById('weekLabel');
-  const hdr=document.getElementById('hdr');
-  const prevWeek=document.getElementById('prevWeek');
-  const nextWeek=document.getElementById('nextWeek');
-  const toggleView=document.getElementById('toggleView');
-  const monthPicker=document.getElementById('monthPicker');
-  const modal=document.getElementById('modal');
-  const modalTitle=document.getElementById('modalTitle');
-  const modalClient=document.getElementById('modalClient');
-  const modalFile=document.getElementById('modalFile');
-  const modalSave=document.getElementById('modalSave');
-  const modalCancel=document.getElementById('modalCancel');
-  let clients=[], activeDate=null;
+    // 2) DOM & state
+    const headerRow     = document.getElementById('headerRow');
+    const weekRow       = document.getElementById('weekRow');
+    const weekLabel     = document.getElementById('weekLabel');
+    const prevWeekBtn   = document.getElementById('prevWeek');
+    const nextWeekBtn   = document.getElementById('nextWeek');
 
-  function startOfWeek(d){
-    const day=d.getDay(), diff=d.getDate()-day;
-    return new Date(d.setDate(diff));
-  }
-  function fmt(d){ return d.toISOString().slice(0,10); }
+    const modalOverlay  = document.getElementById('modalOverlay');
+    const modalTitle    = document.getElementById('modalTitle');
+    const modalClient   = document.getElementById('modalClient');
+    const modalFile     = document.getElementById('modalFile');
+    const modalSaveBtn  = document.getElementById('modalSave');
+    const modalCancelBtn= document.getElementById('modalCancel');
+    const modalDeleteBtn= document.getElementById('modalDelete');
 
-  // Grid headers
-  const days=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-  days.forEach(h=> hdr.append(Object.assign(document.createElement('th'),{
-    className:'border p-2', textContent:h
-  })));
+    let currentMonday = startOfWeek(new Date());
+    let clients = [], deliveries = [];
+    let editingId = null, editingDate = null;
 
-  // Render week
-  function renderWeek(){
-    const mon = startOfWeek(new Date(currentMonday));
-    weekLabel.textContent = `${fmt(mon)}`;
-    weekRow.innerHTML='';
-    for(let i=0;i<7;i++){
-      const d=new Date(mon);
-      d.setDate(mon.getDate()+i);
-      const ds=fmt(d);
-      const td=document.createElement('td');
-      td.className='border h-24 p-1 cursor-pointer';
-      td.dataset.date=ds;
-      td.innerHTML=`
-        <div class="font-semibold">${ds}</div>
-        <div>&nbsp;</div>
-      `;
-      td.onclick=()=>openModal(ds);
-      weekRow.append(td);
+    function startOfWeek(d) {
+      const day = d.getDay(), diff = d.getDate() - day;
+      return new Date(d.setDate(diff));
     }
-  }
+    function fmt(d) {
+      return d.toISOString().slice(0,10);
+    }
 
-  // Modal open/close
-  function openModal(dateKey){
-    activeDate=dateKey;
-    modalTitle.textContent=`Importer ${dateKey}`;
-    modal.classList.remove('hidden');
-  }
-  modalCancel.onclick=()=>modal.classList.add('hidden');
+    // 3) Charger clients
+    async function loadClients() {
+      const snap = await db.collection('clients').get();
+      clients = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+      modalClient.innerHTML = '';
+      clients.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.text  = `${c.firstName||''} ${c.lastName||''}`.trim();
+        modalClient.append(opt);
+      });
+    }
 
-  modalSave.onclick=async()=>{
-    const cid=modalClient.value;
-    const file=modalFile.files[0];
-    if(!cid||!file){ return alert('Client+Fichier requis'); }
-    const data=await file.arrayBuffer();
-    const wb=XLSX.read(data);
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
-    const qty=Math.max(0,rows.length-1);
-    await db.collection('leads').add({clientId:cid,date:activeDate,quantity:qty});
-    modal.classList.add('hidden');
-  };
+    // 4) Charger imports existants
+    async function loadDeliveries() {
+      const snap = await db.collection('leads').get();
+      deliveries = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+      renderWeek();
+    }
 
-  // Load clients
-  db.collection('clients').onSnapshot(snap=>{
-    clients=snap.docs.map(d=>({id:d.id,...d.data()}));
-    modalClient.innerHTML='';
-    clients.forEach(c=>{
-      modalClient.append(Object.assign(new Option(),{
-        value:c.id, text:`${c.firstName} ${c.lastName}`
-      }));
-    });
+    // 5) Construire la grille hebdo
+    function renderWeek() {
+      const mon = startOfWeek(new Date(currentMonday));
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate()+6);
+      weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
+
+      // En-tête
+      headerRow.innerHTML = '';
+      ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'].forEach(day => {
+        const th = document.createElement('th');
+        th.className = 'border p-2';
+        th.textContent = day;
+        headerRow.append(th);
+      });
+
+      // Cells
+      weekRow.innerHTML = '';
+      for (let i=0; i<7; i++) {
+        const d = new Date(mon);
+        d.setDate(mon.getDate()+i);
+        const ds = fmt(d);
+        const td = document.createElement('td');
+        td.className = 'border align-top h-32 p-1 cursor-pointer';
+        td.dataset.date = ds;
+        td.innerHTML = `<div class="font-semibold mb-1">${ds}</div><div>&nbsp;</div>`;
+        td.onclick = () => openModal(ds);
+        weekRow.append(td);
+      }
+
+      // Afficher imports existants
+      deliveries
+        .filter(x => x.date >= fmt(mon) && x.date <= fmt(sun))
+        .forEach(appendDelivery);
+    }
+
+    // 6) Ajouter une entrée existante dans la cellule
+    function appendDelivery(entry) {
+      const td = document.querySelector(`td[data-date="${entry.date}"]`);
+      if (!td) return;
+      const div = document.createElement('div');
+      div.className = 'p-1 bg-gray-100 mb-1 cursor-pointer';
+      const client = clients.find(c => c.id === entry.clientId) || {};
+      div.textContent = `${client.firstName||''} ${client.lastName||''}: ${entry.quantity} leads`;
+      div.onclick = e => {
+        e.stopPropagation();
+        openModal(entry.date, entry.id);
+      };
+      td.append(div);
+    }
+
+    // 7) Navigation semaine
+    prevWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()-7); renderWeek(); };
+    nextWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()+7); renderWeek(); };
+
+    // 8) Modal open/close
+    function openModal(date, id=null) {
+      editingDate = date;
+      editingId   = id;
+      modalTitle.textContent = id ? `Modifier ${date}` : `Importer ${date}`;
+      modalFile.value = null;
+      modalDeleteBtn.classList.toggle('hidden', !id);
+      modalOverlay.classList.remove('hidden');
+    }
+    modalCancelBtn.onclick = () => modalOverlay.classList.add('hidden');
+
+    // 9) Enregistrer import ou modif
+    modalSaveBtn.onclick = async () => {
+      const cid  = modalClient.value;
+      const file = modalFile.files[0];
+      if (!cid)  return alert('Sélectionnez un client');
+      if (!file) return alert('Choisissez un fichier Excel');
+      // Lecture Excel
+      const data = await file.arrayBuffer();
+      const wb   = XLSX.read(data);
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1 });
+      const qty  = Math.max(0, rows.length - 1);
+      if (editingId) {
+        await db.collection('leads').doc(editingId)
+          .update({ clientId: cid, quantity: qty });
+      } else {
+        await db.collection('leads').add({
+          clientId: cid,
+          date: editingDate,
+          quantity: qty
+        });
+      }
+      modalOverlay.classList.add('hidden');
+    };
+
+    // 10) Supprimer import
+    modalDeleteBtn.onclick = async () => {
+      if (editingId && confirm('Supprimer cet import ?')) {
+        await db.collection('leads').doc(editingId).delete();
+        modalOverlay.classList.add('hidden');
+      }
+    };
+
+    // 11) Démarrage
+    loadClients().then(loadDeliveries);
   });
-
-  // Navigation
-  prevWeek.onclick=()=>{currentMonday.setDate(currentMonday.getDate()-7);renderWeek()};
-  nextWeek.onclick=()=>{currentMonday.setDate(currentMonday.getDate()+7);renderWeek()};
-  toggleView.onclick=()=>alert('La vue mensuelle n’est pas encore implémentée.');
-
-  // Initial render
-  renderWeek();
-
-});
-</script>
-</body></html>
+  </script>
+</body>
+</html>
