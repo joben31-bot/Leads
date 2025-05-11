@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8"/>
-  <title>Livraisons – Import Excel par département</title>
+  <title>Livraisons – Import Excel Simplifié</title>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS pour lire Excel -->
@@ -197,7 +197,7 @@
     }
     modalCancelBtn.onclick = () => modalOverlay.classList.add('hidden');
 
-    // 9) Enregistrer import (par département)
+    // 9) Enregistrer import simplifié
     modalSaveBtn.onclick = async () => {
       const cid  = modalClient.value;
       const file = modalFile.files[0];
@@ -211,38 +211,21 @@
       const arr   = XLSX.utils.sheet_to_json(sheet, { header: 1 });
       if (arr.length < 2) return alert('Le fichier est vide ou sans en-tête');
 
-      // Trouver l’index de la colonne "Departement"
-      const header = arr[0].map(h => String(h).toLowerCase());
-      const idxDept = header.findIndex(h => h.includes('depart'));
-      if (idxDept < 0) return alert('Impossible de trouver la colonne “Departement”');
+      // Compter toutes les lignes hors en-tête
+      const totalRows = arr.length - 1;
 
-      // Filtrer les vraies lignes et compter par code (2 premiers caractères)
-      const dataRows = arr.slice(1).filter(r => r[idxDept] != null && String(r[idxDept]).trim() !== '');
-      if (dataRows.length === 0) return alert('Aucune donnée de leads trouvée');
-
-      const counts = {};
-      dataRows.forEach(r => {
-        const raw = String(r[idxDept]).trim();
-        const dep = raw.slice(0,2);
-        counts[dep] = (counts[dep] || 0) + 1;
-      });
-
-      // Batch Firestore
-      const batch = db.batch();
+      // Créer ou mettre à jour le document unique
       if (editingId) {
-        batch.delete(db.collection('leads').doc(editingId));
-      }
-      Object.entries(counts).forEach(([dep,qty]) => {
-        const ref = db.collection('leads').doc();
-        batch.set(ref, {
-          clientId:   cid,
-          date:       editingDate,
-          department: dep,
-          quantity:   qty
+        await db.collection('leads').doc(editingId)
+          .update({ clientId: cid, quantity: totalRows });
+      } else {
+        await db.collection('leads').add({
+          clientId: cid,
+          date:     editingDate,
+          quantity: totalRows
         });
-      });
+      }
 
-      await batch.commit();
       modalOverlay.classList.add('hidden');
     };
 
@@ -260,4 +243,3 @@
   </script>
 </body>
 </html>
-
