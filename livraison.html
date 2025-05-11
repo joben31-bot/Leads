@@ -2,14 +2,13 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8"/>
-  <title>Livraisons – Édition journalière</title>
+  <title>Livraisons – Totaux journaliers</title>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col h-screen">
 
-  <!-- NAV -->
+  <!-- NAVIGATION -->
   <header class="bg-white shadow p-4 flex justify-between items-center">
     <h1 class="text-2xl font-bold">Agenda Livraisons</h1>
     <nav class="space-x-4 text-sm">
@@ -27,7 +26,7 @@
     <span id="weekLabel" class="font-medium"></span>
   </div>
 
-  <!-- CALENDRIER HEBDO -->
+  <!-- GRILLE HEBDO -->
   <div class="flex-1 overflow-auto p-4 bg-white">
     <table class="w-full table-fixed border-collapse">
       <thead><tr id="headerRow"></tr></thead>
@@ -37,48 +36,35 @@
 
   <!-- MODAL D'ÉDITION -->
   <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
-    <div class="bg-white p-6 rounded shadow-lg w-96 max-h-[80vh] overflow-auto">
-      <h2 id="modalTitle" class="text-lg font-semibold mb-4">Livraisons du <span id="modalDate"></span></h2>
-
-      <!-- Tableau des entrées existantes -->
-      <table class="w-full text-sm border-collapse mb-4">
-        <thead class="bg-gray-100">
-          <tr>
-            <th class="border p-1">Département</th>
-            <th class="border p-1">Quantité</th>
-            <th class="border p-1">Suppr.</th>
-          </tr>
-        </thead>
-        <tbody id="modalTableBody"></tbody>
-      </table>
-
-      <!-- Formulaire d'ajout -->
-      <div class="mb-4">
-        <div class="flex gap-2 items-center">
-          <select id="newDept" class="border p-1 rounded flex-1">
-            <option value="">Sélect. dép.</option>
-          </select>
-          <input type="number" id="newQty" min="1" placeholder="Quantité"
-                 class="border p-1 w-20 rounded"/>
-          <button id="addLine" class="px-2 py-1 bg-green-500 text-white rounded">➕</button>
-        </div>
+    <div class="bg-white p-6 rounded shadow w-80">
+      <h2 class="text-lg font-semibold mb-4">Livraisons du <span id="modalDate"></span></h2>
+      <div class="space-y-3">
+        <label class="block">Client
+          <select id="modalClient" class="w-full border p-2 rounded"></select>
+        </label>
+        <label class="block">Quantité de leads
+          <input type="number" id="modalQty" class="w-full border p-2 rounded" min="0"/>
+        </label>
       </div>
-
-      <!-- Actions modal -->
-      <div class="flex justify-end gap-2">
-        <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
-        <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
+      <div class="mt-4 flex justify-between items-center">
+        <button id="modalDelete" class="px-4 py-2 bg-red-500 text-white rounded hidden">
+          Supprimer
+        </button>
+        <div class="flex gap-2">
+          <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+          <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Firebase -->
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // Init Firebase
+    // 1) Init Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -91,27 +77,26 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // DOM refs
-    const headerRow    = document.getElementById('headerRow');
-    const weekRow      = document.getElementById('weekRow');
-    const weekLabel    = document.getElementById('weekLabel');
-    const prevWeekBtn  = document.getElementById('prevWeek');
-    const nextWeekBtn  = document.getElementById('nextWeek');
-    const modalOverlay = document.getElementById('modalOverlay');
-    const modalTitle   = document.getElementById('modalTitle');
-    const modalDateEl  = document.getElementById('modalDate');
-    const modalTable   = document.getElementById('modalTableBody');
-    const newDeptSel   = document.getElementById('newDept');
-    const newQtyInput  = document.getElementById('newQty');
-    const addLineBtn   = document.getElementById('addLine');
-    const modalCancel  = document.getElementById('modalCancel');
-    const modalSave    = document.getElementById('modalSave');
+    // 2) DOM refs
+    const headerRow     = document.getElementById('headerRow');
+    const weekRow       = document.getElementById('weekRow');
+    const weekLabel     = document.getElementById('weekLabel');
+    const prevWeekBtn   = document.getElementById('prevWeek');
+    const nextWeekBtn   = document.getElementById('nextWeek');
+    const modalOverlay  = document.getElementById('modalOverlay');
+    const modalDateEl   = document.getElementById('modalDate');
+    const modalClient   = document.getElementById('modalClient');
+    const modalQty      = document.getElementById('modalQty');
+    const modalSaveBtn  = document.getElementById('modalSave');
+    const modalCancelBtn= document.getElementById('modalCancel');
+    const modalDeleteBtn= document.getElementById('modalDelete');
 
+    // 3) État
     let currentMonday = startOfWeek(new Date());
     let clients = [], deliveries = [];
-    let editingDate = null;
+    let editingId = null, editingDate = null;
 
-    // Helpers date
+    // Helpers
     function startOfWeek(d) {
       const day = d.getDay(), diff = d.getDate() - day;
       return new Date(d.setDate(diff));
@@ -120,20 +105,27 @@
       return d.toISOString().slice(0,10);
     }
 
-    // Load clients for dropdown (if needed)
+    // 4) Charger clients
     async function loadClients() {
       const snap = await db.collection('clients').get();
-      clients = snap.docs.map(d => ({id:d.id,...d.data()}));
+      clients = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      modalClient.innerHTML = '';
+      clients.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.text  = `${c.firstName||''} ${c.lastName||''}`.trim();
+        modalClient.append(o);
+      });
     }
 
-    // Load all leads
+    // 5) Charger livraisons (un doc par date/client)
     async function loadDeliveries() {
       const snap = await db.collection('leads').get();
       deliveries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       renderWeek();
     }
 
-    // Render weekly grid (total only)
+    // 6) Rendu hebdomadaire (total par jour)
     function renderWeek() {
       const mon = startOfWeek(new Date(currentMonday));
       const sun = new Date(mon); sun.setDate(mon.getDate()+6);
@@ -143,169 +135,95 @@
       headerRow.innerHTML = '';
       ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'].forEach(day => {
         const th = document.createElement('th');
-        th.className = 'border p-2'; th.textContent = day;
+        th.className = 'border p-2';
+        th.textContent = day;
         headerRow.append(th);
       });
 
       // days
       weekRow.innerHTML = '';
-      for (let i=0; i<7; i++) {
+      for (let i = 0; i < 7; i++) {
         const d = new Date(mon); d.setDate(mon.getDate()+i);
         const ds = fmt(d);
+        // trouver document pour cette date (dernier ajouté)
+        const doc = deliveries.find(x => x.date === ds);
+        const qty = doc ? doc.quantity : 0;
+
         const td = document.createElement('td');
         td.className = 'border align-top h-32 p-1 cursor-pointer';
         td.dataset.date = ds;
-
-        // total leads that date
-        const total = deliveries
-          .filter(x => x.date===ds)
-          .reduce((sum,x)=> sum + x.quantity, 0);
-
         td.innerHTML = `
           <div class="font-semibold mb-1">${ds}</div>
-          <div class="text-lg">${total} lead${total>1?'s':''}</div>
+          <div class="text-lg">${qty} lead${qty>1?'s':''}</div>
         `;
-        td.onclick = () => openModal(ds);
+        td.onclick = () => openModal(ds, doc ? doc.id : null);
         weekRow.append(td);
       }
     }
 
-    // Navigation
+    // navigation
     prevWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate()-7);
+      currentMonday.setDate(currentMonday.getDate() - 7);
       renderWeek();
     };
     nextWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate()+7);
+      currentMonday.setDate(currentMonday.getDate() + 7);
       renderWeek();
     };
 
-    // Open modal: show all entries for that date
-    function openModal(date) {
+    // modal open/close
+    function openModal(date, id) {
       editingDate = date;
+      editingId   = id;
       modalDateEl.textContent = date;
-      modalOverlay.classList.remove('hidden');
-      fillModal();
-    }
-    modalCancel.onclick = () => modalOverlay.classList.add('hidden');
-
-    // Fill modal table and dept dropdown
-    function fillModal() {
-      // clear
-      modalTable.innerHTML = '';
-      newDeptSel.innerHTML = '<option value="">-- Dépt --</option>';
-
-      // populate existing rows
-      const entries = deliveries.filter(x => x.date === editingDate);
-      entries.forEach(entry => {
-        const tr = document.createElement('tr');
-        tr.dataset.id = entry.id;
-        tr.innerHTML = `
-          <td class="border p-1">${entry.department}</td>
-          <td class="border p-1">
-            <input type="number" value="${entry.quantity}" min="1"
-                   class="w-16 border p-1 rounded qty-input"/>
-          </td>
-          <td class="border p-1 text-center">
-            <button class="del-btn text-red-500">🗑️</button>
-          </td>
-        `;
-        modalTable.append(tr);
-      });
-
-      // build dept selector from all deliveriesList or static
-      const deptsUsed = new Set(entries.map(e=>e.department));
-      // static list 95 depts
-      const allDepts = [
-        "01","02","03","04","05","06","07","08","09","10","11","12","13","14","15",
-        "16","17","18","19","2A","2B","21","22","23","24","25","26","27","28","29",
-        "30","31","32","33","34","35","36","37","38","39","40","41","42","43","44",
-        "45","46","47","48","49","50","51","52","53","54","55","56","57","58","59",
-        "60","61","62","63","64","65","66","67","68","69","70","71","72","73","74",
-        "75","76","77","78","79","80","81","82","83","84","85","86","87","88","89",
-        "90","91","92","93","94","95"
-      ];
-      allDepts.forEach(dep => {
-        if (!deptsUsed.has(dep)) {
-          const o = document.createElement('option');
-          o.value = dep; o.text = dep;
-          newDeptSel.append(o);
-        }
-      });
-    }
-
-    // Add new line
-    addLineBtn.onclick = () => {
-      const dep = newDeptSel.value;
-      const qty = parseInt(newQtyInput.value,10);
-      if (!dep) return alert('Sélectionnez un département');
-      if (!qty||qty<1) return alert('Quantité invalide');
-      const tr = document.createElement('tr');
-      tr.dataset.id = ''; // nouveau
-      tr.innerHTML = `
-        <td class="border p-1">${dep}</td>
-        <td class="border p-1">
-          <input type="number" value="${qty}" min="1"
-                 class="w-16 border p-1 rounded qty-input"/>
-        </td>
-        <td class="border p-1 text-center">
-          <button class="del-btn text-red-500">🗑️</button>
-        </td>
-      `;
-      modalTable.append(tr);
-      // enlever de la liste
-      newDeptSel.querySelector(`option[value="${dep}"]`).remove();
-      newQtyInput.value = '';
-    };
-
-    // Délégation suppression de ligne
-    modalTable.addEventListener('click', e => {
-      if (e.target.classList.contains('del-btn')) {
-        const tr = e.target.closest('tr');
-        // remettre le dept dans dropdown si nouveau
-        const dep = tr.children[0].textContent;
-        const opt = document.createElement('option');
-        opt.value = dep; opt.text = dep;
-        newDeptSel.append(opt);
-        tr.remove();
+      // si existant, charger valeur
+      if (id) {
+        const e = deliveries.find(x => x.id === id);
+        modalClient.value = e.clientId;
+        modalQty.value    = e.quantity;
+        modalDeleteBtn.classList.remove('hidden');
+      } else {
+        modalClient.selectedIndex = 0;
+        modalQty.value = '';
+        modalDeleteBtn.classList.add('hidden');
       }
-    });
+      modalOverlay.classList.remove('hidden');
+    }
+    modalCancelBtn.onclick = () => modalOverlay.classList.add('hidden');
 
-    // Save all changes
-    modalSave.onclick = async () => {
-      const batch = db.batch();
+    // save or update
+    modalSaveBtn.onclick = async () => {
+      const cid = modalClient.value;
+      const q   = parseInt(modalQty.value, 10);
+      if (!cid) return alert('Sélectionnez un client');
+      if (isNaN(q) || q < 0) return alert('Quantité invalide');
 
-      // Parcourir chaque ligne du tableau
-      Array.from(modalTable.children).forEach(tr => {
-        const id = tr.dataset.id;
-        const dep = tr.children[0].textContent;
-        const qty = parseInt(tr.querySelector('.qty-input').value,10);
-
-        if (id) {
-          // doc existant: update or delete
-          if (qty>0) {
-            batch.update(db.collection('leads').doc(id), { quantity: qty });
-          } else {
-            batch.delete(db.collection('leads').doc(id));
-          }
-        } else {
-          // nouvelle
-          const ref = db.collection('leads').doc();
-          batch.set(ref, {
-            clientId:   modalClient.value,
-            date:       editingDate,
-            department: dep,
-            quantity:   qty
-          });
-        }
-      });
-
-      await batch.commit();
+      if (editingId) {
+        await db.collection('leads').doc(editingId).update({
+          clientId: cid,
+          quantity: q
+        });
+      } else {
+        await db.collection('leads').add({
+          date:       editingDate,
+          clientId:   cid,
+          quantity:   q
+        });
+      }
       modalOverlay.classList.add('hidden');
       await loadDeliveries();
     };
 
-    // Initial load
+    // delete
+    modalDeleteBtn.onclick = async () => {
+      if (editingId && confirm('Supprimer cette livraison ?')) {
+        await db.collection('leads').doc(editingId).delete();
+        modalOverlay.classList.add('hidden');
+        await loadDeliveries();
+      }
+    };
+
+    // init
     loadClients().then(loadDeliveries);
   });
   </script>
