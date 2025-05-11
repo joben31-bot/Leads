@@ -1,266 +1,132 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8"/>
-  <title>Livraisons – Agenda & Import Excel</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- SheetJS pour lire Excel -->
   <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
-</head>
-<body class="bg-gray-100 flex flex-col h-screen">
-
-  <!-- NAVIGATION -->
-  <header class="bg-white shadow p-4 flex justify-between items-center">
-    <h1 class="text-2xl font-bold">Agenda Livraisons</h1>
-    <nav class="space-x-4">
-      <a href="index.html"     class="text-gray-600 hover:text-blue-600">Accueil</a>
-      <a href="clients.html"   class="text-gray-600 hover:text-blue-600">Clients</a>
-      <a href="livraison.html" class="text-blue-600 font-semibold">Livraisons</a>
-      <a href="rapport.html"   class="text-gray-600 hover:text-blue-600">Rapports</a>
-    </nav>
-  </header>
-
-  <!-- CONTRÔLES AGENDA -->
-  <div class="p-4 bg-white flex items-center space-x-4">
-    <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Sem préc.</button>
-    <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Sem suiv. →</button>
-    <span id="weekLabel" class="font-medium"></span>
-    <button id="toggleView" class="ml-auto px-3 py-1 bg-blue-200 rounded">Vue mensuelle</button>
-    <input type="month" id="monthPicker" class="border p-1 rounded"/>
-  </div>
-
-  <!-- AGENDA -->
-  <div class="flex-1 overflow-auto p-4 bg-white">
-    <!-- Vue hebdo -->
-    <div id="weekView">
-      <table class="w-full table-fixed border-collapse">
-        <thead><tr>
-          <th class="border p-2">Dim</th><th class="border p-2">Lun</th>
-          <th class="border p-2">Mar</th><th class="border p-2">Mer</th>
-          <th class="border p-2">Jeu</th><th class="border p-2">Ven</th>
-          <th class="border p-2">Sam</th>
-        </tr></thead>
-        <tbody><tr id="weekRow"></tr></tbody>
-      </table>
-    </div>
-    <!-- Vue mensuelle -->
-    <div id="monthView" class="hidden">
-      <table class="w-full table-fixed border-collapse">
-        <thead><tr id="monthHeader"></tr></thead>
-        <tbody><tr id="monthBody"></tr></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- MODAL IMPORT / ÉDITION -->
-  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
-    <div class="bg-white p-6 rounded shadow-lg w-80">
-      <h2 class="text-lg font-semibold mb-4" id="modalTitle">Importer leads</h2>
-      <div class="space-y-3">
-        <label>Client
-          <select id="modalClient" class="w-full border p-2 rounded"></select>
-        </label>
-        <label>Fichier Excel
-          <input type="file" id="modalFile" accept=".xls,.xlsx" class="w-full border p-2 rounded"/>
-        </label>
-      </div>
-      <div class="mt-4 flex justify-between items-center">
-        <button id="modalDelete" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 hidden">
-          Supprimer
-        </button>
-        <div class="flex gap-2">
-          <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">Annuler</button>
-          <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-            Importer
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- SDKs Firebase & code -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
-  <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    // 1) Init Firebase
-    const firebaseConfig = { /* tes clés */ };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+</head><body class="p-4">
 
-    // 2) DOM refs & state
-    const weekRow     = document.getElementById('weekRow');
-    const weekLabel   = document.getElementById('weekLabel');
-    const prevWeek    = document.getElementById('prevWeek');
-    const nextWeek    = document.getElementById('nextWeek');
-    const toggleView  = document.getElementById('toggleView');
-    const monthPicker = document.getElementById('monthPicker');
-    const weekView    = document.getElementById('weekView');
-    const monthView   = document.getElementById('monthView');
-    const monthHeader = document.getElementById('monthHeader');
-    const monthBody   = document.getElementById('monthBody');
-    const modal       = document.getElementById('modal');
-    const modalTitle  = document.getElementById('modalTitle');
-    const modalClient = document.getElementById('modalClient');
-    const modalFile   = document.getElementById('modalFile');
-    const modalSave   = document.getElementById('modalSave');
-    const modalCancel = document.getElementById('modalCancel');
-    const modalDelete = document.getElementById('modalDelete');
+  <div class="flex gap-2 mb-4">
+    <button id="prevWeek">←</button>
+    <button id="nextWeek">→</button>
+    <span id="weekLabel"></span>
+    <button id="toggleView">Vue mensuelle</button>
+    <input type="month" id="monthPicker">
+  </div>
 
-    let currentMonday = startOfWeek(new Date());
-    let viewIsMonth = false;
-    let clients = [], deliveries = [];
-    let activeEntry = null, activeDate = null;
+  <table class="table-fixed w-full border-collapse">
+    <thead><tr id="hdr"></tr></thead>
+    <tbody><tr id="weekRow"></tr></tbody>
+  </table>
 
-    function startOfWeek(d) {
-      const day = d.getDay(), diff = d.getDate() - day;
-      return new Date(d.setDate(diff));
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden">
+    <div class="bg-white p-4 mx-auto mt-20 w-64">
+      <h2 id="modalTitle"></h2>
+      <select id="modalClient" class="w-full mb-2 border"></select>
+      <input type="file" id="modalFile" class="w-full mb-2 border"/>
+      <div class="flex justify-between">
+        <button id="modalCancel">Annuler</button>
+        <button id="modalSave">Importer</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+document.addEventListener('DOMContentLoaded',()=>{
+
+  // Firebase init
+  firebase.initializeApp({ /* ta config */ });
+  const db = firebase.firestore();
+
+  // State + refs
+  let currentMonday=new Date(), viewIsMonth=false;
+  const weekRow=document.getElementById('weekRow');
+  const weekLabel=document.getElementById('weekLabel');
+  const hdr=document.getElementById('hdr');
+  const prevWeek=document.getElementById('prevWeek');
+  const nextWeek=document.getElementById('nextWeek');
+  const toggleView=document.getElementById('toggleView');
+  const monthPicker=document.getElementById('monthPicker');
+  const modal=document.getElementById('modal');
+  const modalTitle=document.getElementById('modalTitle');
+  const modalClient=document.getElementById('modalClient');
+  const modalFile=document.getElementById('modalFile');
+  const modalSave=document.getElementById('modalSave');
+  const modalCancel=document.getElementById('modalCancel');
+  let clients=[], activeDate=null;
+
+  function startOfWeek(d){
+    const day=d.getDay(), diff=d.getDate()-day;
+    return new Date(d.setDate(diff));
+  }
+  function fmt(d){ return d.toISOString().slice(0,10); }
+
+  // Grid headers
+  const days=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  days.forEach(h=> hdr.append(Object.assign(document.createElement('th'),{
+    className:'border p-2', textContent:h
+  })));
+
+  // Render week
+  function renderWeek(){
+    const mon = startOfWeek(new Date(currentMonday));
+    weekLabel.textContent = `${fmt(mon)}`;
+    weekRow.innerHTML='';
+    for(let i=0;i<7;i++){
+      const d=new Date(mon);
+      d.setDate(mon.getDate()+i);
+      const ds=fmt(d);
+      const td=document.createElement('td');
+      td.className='border h-24 p-1 cursor-pointer';
+      td.dataset.date=ds;
+      td.innerHTML=`
+        <div class="font-semibold">${ds}</div>
+        <div>&nbsp;</div>
+      `;
+      td.onclick=()=>openModal(ds);
+      weekRow.append(td);
     }
-    function fmt(d) { return d.toISOString().slice(0,10); }
+  }
 
-    // Charger clients
-    async function loadClients() {
-      const snap = await db.collection('clients').get();
-      clients = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-      modalClient.innerHTML = '';
-      clients.forEach(c=>{
-        const o = new Option(`${c.firstName} ${c.lastName}`, c.id);
-        modalClient.append(o);
-      });
-    }
+  // Modal open/close
+  function openModal(dateKey){
+    activeDate=dateKey;
+    modalTitle.textContent=`Importer ${dateKey}`;
+    modal.classList.remove('hidden');
+  }
+  modalCancel.onclick=()=>modal.classList.add('hidden');
 
-    // Charger imports existants
-    async function loadDeliveries() {
-      const snap = await db.collection('leads').get();
-      deliveries = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-      renderCurrent();
-    }
+  modalSave.onclick=async()=>{
+    const cid=modalClient.value;
+    const file=modalFile.files[0];
+    if(!cid||!file){ return alert('Client+Fichier requis'); }
+    const data=await file.arrayBuffer();
+    const wb=XLSX.read(data);
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
+    const qty=Math.max(0,rows.length-1);
+    await db.collection('leads').add({clientId:cid,date:activeDate,quantity:qty});
+    modal.classList.add('hidden');
+  };
 
-    // Construire vue hebdo
-    function renderWeek() {
-      const mon = currentMonday;
-      const sun = new Date(mon); sun.setDate(mon.getDate()+6);
-      weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
-      weekRow.innerHTML = '';
-      for(let i=0;i<7;i++){
-        const d=new Date(mon); d.setDate(mon.getDate()+i);
-        const dateKey = fmt(d);
-        const td = document.createElement('td');
-        td.className = 'border align-top h-32 p-1';
-        td.dataset.date = dateKey;
-        td.innerHTML = `<div class="font-semibold">${dateKey}</div>`;
-        td.onclick = ()=>openModal(null, dateKey);
-        weekRow.append(td);
-      }
-      // afficher entrées
-      deliveries.filter(x=>x.date>=fmt(mon)&&x.date<=fmt(sun))
-        .forEach(x=>appendRow(x));
-    }
-
-    // Construire vue mois
-    function renderMonth() {
-      const [y,m] = monthPicker.value.split('-').map(Number);
-      const days = new Date(y,m,0).getDate();
-      monthHeader.innerHTML=''; monthBody.innerHTML='';
-      for(let d=1;d<=days;d++){
-        const dt=new Date(y,m-1,d), ds=fmt(dt);
-        monthHeader.append(Object.assign(document.createElement('th'),{className:'border p-1',textContent:d}));
-        const td = document.createElement('td');
-        td.className='border h-32 p-1'; td.dataset.date=ds;
-        td.onclick = ()=>openModal(null, ds);
-        monthBody.append(td);
-      }
-      deliveries.filter(x=>x.date.startsWith(`${y}-${String(m).padStart(2,'0')}`))
-        .forEach(x=>appendRow(x));
-    }
-
-    // Ajouter une ligne sous la date
-    function appendRow(entry) {
-      const container = document.querySelector(
-        viewIsMonth 
-          ? `#monthBody td[data-date="${entry.date}"]`
-          : `#weekRow td[data-date="${entry.date}"]`
-      );
-      if(!container) return;
-      const div = document.createElement('div');
-      div.className = 'p-1 bg-gray-100 mb-1 cursor-pointer';
-      const client = clients.find(c=>c.id===entry.clientId);
-      div.textContent = `${client.firstName} ${client.lastName} (${entry.quantity} leads)`;
-      div.onclick = e=>{ e.stopPropagation(); openModal(entry.id, entry.date); };
-      container.append(div);
-    }
-
-    function renderCurrent(){ viewIsMonth?renderMonth():renderWeek(); }
-
-    // Navigateur et bascule
-    toggleView.onclick=()=>{
-      viewIsMonth = !viewIsMonth;
-      weekView.classList.toggle('hidden', viewIsMonth);
-      monthView.classList.toggle('hidden', !viewIsMonth);
-      toggleView.textContent = viewIsMonth ? 'Vue hebdo' : 'Vue mensuelle';
-      if(viewIsMonth&&!monthPicker.value){
-        const t=new Date();
-        monthPicker.value = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}`;
-      }
-      renderCurrent();
-    };
-    prevWeek.onclick=()=>{currentMonday.setDate(currentMonday.getDate()-7);renderWeek();};
-    nextWeek.onclick=()=>{currentMonday.setDate(currentMonday.getDate()+7);renderWeek();};
-    monthPicker.onchange=()=>viewIsMonth&&renderMonth();
-
-    // Ouvrir modal
-    function openModal(id, dateKey){
-      activeEntry = id;
-      activeDate = dateKey;
-      modalTitle.textContent = id?'Modifier import':'Importer leads';
-      modalClient.value = '';
-      modalFile.value = null;
-      modalDelete.classList.toggle('hidden', !id);
-      modalSave.textContent = id?'Sauvegarder':'Importer';
-      modal.classList.remove('hidden');
-    }
-    modalCancel.onclick = ()=>modal.classList.add('hidden');
-
-    // Importer ou modifier
-    modalSave.onclick = async ()=>{
-      const cid = modalClient.value;
-      if(!cid) return alert('Sélectionnez un client');
-      const file = modalFile.files[0];
-      if(!file) return alert('Choisissez un fichier Excel');
-      // lire Excel
-      const data = await file.arrayBuffer();
-      const wb   = XLSX.read(data);
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
-      const qty  = rows.length>1? rows.length-1 : 0;
-      if(qty===0) return alert('Aucune donnée');
-      // créer ou maj
-      if(activeEntry){
-        await db.collection('leads').doc(activeEntry)
-          .update({ clientId:cid, quantity:qty });
-      } else {
-        await db.collection('leads').add({
-          clientId:cid, date:activeDate, department:null, quantity:qty
-        });
-      }
-      modal.classList.add('hidden');
-    };
-
-    // Supprimer
-    modalDelete.onclick = async ()=>{
-      if(activeEntry && confirm('Supprimer cet import ?')){
-        await db.collection('leads').doc(activeEntry).delete();
-        modal.classList.add('hidden');
-      }
-    };
-
-    // Listeners
-    db.collection('clients').onSnapshot(loadClients);
-    db.collection('leads').onSnapshot(loadDeliveries);
-
-    // Start
-    loadClients().then(loadDeliveries);
+  // Load clients
+  db.collection('clients').onSnapshot(snap=>{
+    clients=snap.docs.map(d=>({id:d.id,...d.data()}));
+    modalClient.innerHTML='';
+    clients.forEach(c=>{
+      modalClient.append(Object.assign(new Option(),{
+        value:c.id, text:`${c.firstName} ${c.lastName}`
+      }));
+    });
   });
-  </script>
-</body>
-</html>
+
+  // Navigation
+  prevWeek.onclick=()=>{currentMonday.setDate(currentMonday.getDate()-7);renderWeek()};
+  nextWeek.onclick=()=>{currentMonday.setDate(currentMonday.getDate()+7);renderWeek()};
+  toggleView.onclick=()=>alert('La vue mensuelle n’est pas encore implémentée.');
+
+  // Initial render
+  renderWeek();
+
+});
+</script>
+</body></html>
