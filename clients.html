@@ -6,22 +6,50 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 flex flex-col h-screen">
+<body class="bg-gray-100 flex h-screen">
 
-  <!-- NAVIGATION -->
-  <header class="bg-white shadow p-4 flex justify-between items-center">
-    <h1 class="text-2xl font-bold">Gestion Clients</h1>
-    <nav class="space-x-4 text-sm">
-      <a href="index.html"     class="hover:text-blue-600">Accueil</a>
-      <a href="clients.html"   class="text-blue-600 font-semibold">Clients</a>
-      <a href="livraison.html" class="hover:text-blue-600">Livraisons</a>
-      <a href="rapport.html"   class="hover:text-blue-600">Rapports</a>
-    </nav>
-  </header>
+  <!-- PANNEAU GAUCHE : FORMULAIRE AJOUT/MODIF -->
+  <aside class="w-1/3 bg-white p-6 overflow-auto">
+    <h2 id="formTitle" class="text-xl font-semibold mb-4">Ajouter un client</h2>
+    <form id="clientForm" class="space-y-4">
+      <label class="block">
+        Prénom
+        <input type="text" id="firstName" required class="w-full border p-2 rounded"/>
+      </label>
+      <label class="block">
+        Nom
+        <input type="text" id="lastName" required class="w-full border p-2 rounded"/>
+      </label>
+      <label class="block">
+        Email
+        <input type="email" id="email" required class="w-full border p-2 rounded"/>
+      </label>
+      <label class="block">
+        Téléphone
+        <input type="tel" id="phone" class="w-full border p-2 rounded"/>
+      </label>
+      <label class="block">
+        Société
+        <input type="text" id="company" class="w-full border p-2 rounded"/>
+      </label>
+      <div>
+        <p class="mb-1 font-medium">Départements</p>
+        <div id="departmentsCheckboxes"
+             class="border rounded h-48 overflow-y-auto p-2 grid grid-cols-2 gap-1"></div>
+      </div>
+      <div class="flex justify-end space-x-2">
+        <button type="reset" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+        <button type="submit" id="saveBtn" class="px-4 py-2 bg-blue-600 text-white rounded">
+          Enregistrer
+        </button>
+      </div>
+    </form>
+  </aside>
 
-  <div class="flex-1 overflow-auto p-6 bg-white">
+  <!-- PANNEAU DROIT : TABLEAU CLIENTS -->
+  <main class="flex-1 p-6 overflow-auto">
     <h2 class="text-xl font-semibold mb-4">Liste des Clients</h2>
-    <table class="min-w-full text-sm border-collapse">
+    <table class="w-full table-auto border-collapse bg-white">
       <thead class="bg-gray-100">
         <tr>
           <th class="border p-2">Prénom</th>
@@ -29,14 +57,14 @@
           <th class="border p-2">Email</th>
           <th class="border p-2">Tél</th>
           <th class="border p-2">Société</th>
+          <th class="border p-2">Départements</th>
           <th class="border p-2">Total Leads</th>
-          <th class="border p-2">Leads par Département</th>
           <th class="border p-2">Actions</th>
         </tr>
       </thead>
       <tbody id="clientsTableBody"></tbody>
     </table>
-  </div>
+  </main>
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
@@ -44,7 +72,7 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // Firebase config
+    // --- 1) Initialisation Firebase ---
     const firebaseConfig = {
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -57,36 +85,53 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
+    // --- 2) Gestion départements multisélect ---
+    const departmentsList = [ /* … liste des 95 départements … */ ];
+    const cbContainer = document.getElementById('departmentsCheckboxes');
+    departmentsList.forEach(d => {
+      const label = document.createElement('label');
+      label.className = 'inline-flex items-center text-sm';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.name = 'departments'; cb.value = d.code; cb.className = 'mr-1';
+      label.append(cb, `${d.code} – ${d.nom}`);
+      cbContainer.append(label);
+    });
+
+    // --- 3) Variables & refs DOM ---
+    const form    = document.getElementById('clientForm');
+    const saveBtn = document.getElementById('saveBtn');
+    const tbody   = document.getElementById('clientsTableBody');
+    const formTitle = document.getElementById('formTitle');
+
+    let editingId = null;
+    // stock global pour détail par client
+    let countsByClient = {};
+
+    // --- 4) Charger clients + compter leads ---
     async function loadClientsWithCounts() {
-      // 1) Charger clients
+      // clients
       const snapClients = await db.collection('clients').get();
       const clients = snapClients.docs.map(d => ({ id: d.id, ...d.data() }));
-
-      // 2) Charger tous les leads
+      // leads
       const snapLeads = await db.collection('leads').get();
       const leads = snapLeads.docs.map(d => d.data());
 
-      // 3) Agréger par client
-      const countsByClient = {};
+      // agrégation
+      countsByClient = {};
       leads.forEach(({ clientId, department, quantity }) => {
         if (!countsByClient[clientId]) {
           countsByClient[clientId] = { total: 0, byDept: {} };
         }
         countsByClient[clientId].total += quantity;
         const bd = countsByClient[clientId].byDept;
-        // on groupe aussi par département
         const dep = department || '—';
         bd[dep] = (bd[dep] || 0) + quantity;
       });
 
-      // 4) Rendu tableau
-      const tbody = document.getElementById('clientsTableBody');
+      // rendu du tableau
       tbody.innerHTML = '';
       clients.forEach(c => {
-        const cnt = countsByClient[c.id] || { total: 0, byDept: {} };
-        const depts = Object.entries(cnt.byDept)
-          .map(([d, q]) => `${d}: ${q}`)
-          .join(', ');
+        const cnt = countsByClient[c.id] || { total: 0 };
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="border p-2">${c.firstName || ''}</td>
@@ -94,26 +139,77 @@
           <td class="border p-2">${c.email     || ''}</td>
           <td class="border p-2">${c.phone     || ''}</td>
           <td class="border p-2">${c.company   || ''}</td>
+          <td class="border p-2">${(c.departments||[]).join(', ')}</td>
           <td class="border p-2 text-right">${cnt.total}</td>
-          <td class="border p-2">${depts}</td>
           <td class="border p-2 space-x-1">
             <button onclick="editClient('${c.id}')" class="text-yellow-500">✏️</button>
             <button onclick="deleteClient('${c.id}')" class="text-red-500">🗑️</button>
-          </td>
-        `;
+            <button onclick="showDetails('${c.id}')" class="text-blue-500">📊</button>
+          </td>`;
         tbody.append(tr);
       });
     }
 
-    // Placeholder functions for edit/delete (à implémenter si besoin)
-    window.editClient   = id => { alert('Modifier client ' + id); };
-    window.deleteClient = id => {
+    // --- 5) Afficher détails leads par département ---
+    window.showDetails = clientId => {
+      const info = countsByClient[clientId];
+      if (!info) return alert('Aucun lead enregistré pour ce client.');
+      const lines = Object.entries(info.byDept)
+        .map(([dep,qty])=>`${dep}: ${qty}`).join('\n');
+      alert(`Leads par département :\n${lines}`);
+    };
+
+    // --- 6) CRUD clients ---
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = {
+        firstName: form.firstName.value.trim(),
+        lastName:  form.lastName.value.trim(),
+        email:     form.email.value.trim(),
+        phone:     form.phone.value.trim(),
+        company:   form.company.value.trim(),
+        departments: Array.from(
+          form.querySelectorAll('input[name="departments"]:checked')
+        ).map(cb=>cb.value)
+      };
+      if (!data.firstName || !data.lastName || !data.email) {
+        return alert('Prénom, nom et e-mail sont requis.');
+      }
+      if (editingId) {
+        await db.collection('clients').doc(editingId).set(data);
+        editingId = null;
+        formTitle.textContent = 'Ajouter un client';
+        saveBtn.textContent = 'Enregistrer';
+      } else {
+        await db.collection('clients').add(data);
+      }
+      form.reset();
+      loadClientsWithCounts();
+    });
+
+    window.editClient = async id => {
+      const doc = await db.collection('clients').doc(id).get();
+      const c = doc.data();
+      form.firstName.value = c.firstName;
+      form.lastName .value = c.lastName;
+      form.email    .value = c.email;
+      form.phone    .value = c.phone||'';
+      form.company  .value = c.company||'';
+      document.querySelectorAll('input[name="departments"]').forEach(cb => {
+        cb.checked = c.departments.includes(cb.value);
+      });
+      editingId = id;
+      formTitle.textContent = 'Modifier un client';
+      saveBtn.textContent = 'Sauvegarder';
+    };
+    window.deleteClient = async id => {
       if (confirm('Supprimer ce client ?')) {
-        db.collection('clients').doc(id).delete().then(loadClientsWithCounts);
+        await db.collection('clients').doc(id).delete();
+        loadClientsWithCounts();
       }
     };
 
-    // Lancer
+    // --- 7) Lancement initial ---
     loadClientsWithCounts();
   });
   </script>
