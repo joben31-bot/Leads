@@ -12,18 +12,19 @@
   <header class="bg-white shadow p-4 flex justify-between items-center">
     <h1 class="text-2xl font-bold">Gestion Clients</h1>
     <nav class="space-x-4 text-sm">
-      <a href="index.html"     class="hover:text-blue-600">Accueil</a>
-      <a href="clients.html"   class="text-blue-600 font-semibold">Clients</a>
-      <a href="livraison.html" class="hover:text-blue-600">Livraisons</a>
-      <a href="rapport.html"   class="hover:text-blue-600">Rapports</a>
+      <a href="index.html">Accueil</a>
+      <a href="clients.html" class="text-blue-600 font-semibold">Clients</a>
+      <a href="livraison.html">Livraisons</a>
+      <a href="rapport.html">Rapports</a>
     </nav>
   </header>
 
   <div class="flex flex-1 overflow-hidden">
-    <!-- PANNEAU GAUCHE : FORMULAIRE AJOUT/MODIF -->
+    <!-- FORMULAIRE -->
     <aside class="w-1/3 bg-white p-6 overflow-auto">
       <h2 id="formTitle" class="text-xl font-semibold mb-4">Ajouter un client</h2>
       <form id="clientForm" class="space-y-4">
+        <!-- champs client -->
         <label class="block">
           Prénom
           <input type="text" id="firstName" required class="w-full border p-2 rounded"/>
@@ -58,10 +59,10 @@
       </form>
     </aside>
 
-    <!-- PANNEAU DROIT : TABLEAU CLIENTS -->
+    <!-- TABLEAU CLIENTS -->
     <main class="flex-1 p-6 overflow-auto">
       <h2 class="text-xl font-semibold mb-4">Liste des Clients</h2>
-      <table class="w-full table-auto border-collapse bg-white">
+      <table class="w-full table-auto border-collapse bg-white mb-4">
         <thead class="bg-gray-100">
           <tr>
             <th class="border p-2">Prénom</th>
@@ -85,7 +86,7 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // 1) Initialisation Firebase
+    // Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -98,19 +99,19 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // 2) Départements multisélect
-    const departmentsList = [ /* … ta liste complète … */ ];
+    // Liste départements
+    const departmentsList = [ /*… tes 95 départements …*/ ];
     const cbContainer = document.getElementById('departmentsCheckboxes');
     departmentsList.forEach(d => {
       const label = document.createElement('label');
       label.className = 'inline-flex items-center text-sm';
       const cb = document.createElement('input');
-      cb.type = 'checkbox'; cb.name = 'departments'; cb.value = d.code; cb.className = 'mr-1';
+      cb.type='checkbox'; cb.name='departments'; cb.value=d.code; cb.className='mr-1';
       label.append(cb, `${d.code} – ${d.nom}`);
       cbContainer.append(label);
     });
 
-    // 3) Références DOM et état
+    // DOM refs
     const form      = document.getElementById('clientForm');
     const saveBtn   = document.getElementById('saveBtn');
     const formTitle = document.getElementById('formTitle');
@@ -119,32 +120,30 @@
     let editingId = null;
     let countsByClient = {};
 
-    // 4) Charger clients + calculer leads
+    // Charge clients + calcule leads
     async function loadClientsWithCounts() {
-      const snapClients = await db.collection('clients').get();
-      const clients = snapClients.docs.map(d => ({ id:d.id, ...d.data() }));
-      const snapLeads   = await db.collection('leads').get();
-      const leads = snapLeads.docs.map(d => d.data());
+      const snapC = await db.collection('clients').get();
+      const clients = snapC.docs.map(d=>({id:d.id,...d.data()}));
+      const snapL = await db.collection('leads').get();
+      const leads  = snapL.docs.map(d=>d.data());
 
+      // agrégation
       countsByClient = {};
-      leads.forEach(({ clientId, department, quantity }) => {
-        if (!countsByClient[clientId]) {
-          countsByClient[clientId] = { total: 0, byDept: {} };
-        }
-        countsByClient[clientId].total += quantity;
-        const bd = countsByClient[clientId].byDept;
-        const dep = department || '—';
-        bd[dep] = (bd[dep] || 0) + quantity;
+      leads.forEach(({clientId, department, quantity})=>{
+        if (!countsByClient[clientId]) countsByClient[clientId]={total:0,byDept:{}};
+        countsByClient[clientId].total+=quantity;
+        const bd=countsByClient[clientId].byDept;
+        bd[department||'—'] = (bd[department]||0)+quantity;
       });
 
-      tbody.innerHTML = '';
-      clients.forEach(c => {
-        const cnt = countsByClient[c.id] || { total: 0 };
+      tbody.innerHTML='';
+      clients.forEach(c=>{
+        const cnt = countsByClient[c.id]||{total:0,byDept:{}};
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="border p-2">${c.firstName}</td>
-          <td class="border p-2">${c.lastName}</td>
-          <td class="border p-2">${c.email}</td>
+        tr.innerHTML=`
+          <td class="border p-2">${c.firstName||''}</td>
+          <td class="border p-2">${c.lastName||''}</td>
+          <td class="border p-2">${c.email||''}</td>
           <td class="border p-2">${c.phone||''}</td>
           <td class="border p-2">${c.company||''}</td>
           <td class="border p-2">${(c.departments||[]).join(', ')}</td>
@@ -152,24 +151,47 @@
           <td class="border p-2 space-x-1">
             <button onclick="editClient('${c.id}')" class="text-yellow-500">✏️</button>
             <button onclick="deleteClient('${c.id}')" class="text-red-500">🗑️</button>
-            <button onclick="showDetails('${c.id}')" class="text-blue-500">📊</button>
-          </td>`;
+            <button onclick="toggleDetails('${c.id}', this)" class="text-blue-500">📊</button>
+          </td>
+        `;
         tbody.append(tr);
+        // ligne détails cachée
+        const det = document.createElement('tr');
+        det.id=`details-${c.id}`;
+        det.className='hidden bg-gray-50';
+        det.innerHTML=`<td colspan="8" class="p-2">
+          <table class="w-full text-sm">
+            <thead><tr><th>Département</th><th>Leads</th></tr></thead>
+            <tbody id="deptRows-${c.id}"></tbody>
+          </table>
+        </td>`;
+        tbody.append(det);
       });
     }
 
-    // 5) Détails par département
-    window.showDetails = clientId => {
-      const info = countsByClient[clientId];
-      if (!info) return alert('Aucun lead pour ce client.');
-      const lines = Object.entries(info.byDept)
-        .map(([d,q]) => `${d}: ${q}`)
-        .join('\n');
-      alert(`Leads par département :\n${lines}`);
+    // Affiche/cache détails
+    window.toggleDetails = (clientId, btn) => {
+      const row = document.getElementById(`details-${clientId}`);
+      const tb  = document.getElementById(`deptRows-${clientId}`);
+      if (row.classList.contains('hidden')) {
+        // remplir
+        tb.innerHTML='';
+        const info = countsByClient[clientId].byDept;
+        Object.entries(info).forEach(([d,q])=>{
+          const tr=document.createElement('tr');
+          tr.innerHTML=`<td class="border p-1">${d}</td><td class="border p-1 text-right">${q}</td>`;
+          tb.append(tr);
+        });
+        row.classList.remove('hidden');
+        btn.textContent='➖';
+      } else {
+        row.classList.add('hidden');
+        btn.textContent='📊';
+      }
     };
 
-    // 6) Ajout / modification client
-    form.addEventListener('submit', async e => {
+    // CRUD client
+    form.addEventListener('submit', async e=>{
       e.preventDefault();
       const data = {
         firstName: form.firstName.value.trim(),
@@ -182,13 +204,13 @@
         ).map(cb=>cb.value)
       };
       if (!data.firstName||!data.lastName||!data.email) {
-        return alert('Prénom, nom et e-mail requis.');
+        return alert('Prénom, nom et e-mail requis');
       }
       if (editingId) {
         await db.collection('clients').doc(editingId).set(data);
-        editingId = null;
-        formTitle.textContent = 'Ajouter un client';
-        saveBtn.textContent = 'Enregistrer';
+        editingId=null;
+        formTitle.textContent='Ajouter un client';
+        saveBtn.textContent='Enregistrer';
       } else {
         await db.collection('clients').add(data);
       }
@@ -196,30 +218,28 @@
       loadClientsWithCounts();
     });
 
-    // 7) Modifier / Supprimer
-    window.editClient = async id => {
+    window.editClient = async id=>{
       const doc = await db.collection('clients').doc(id).get();
       const c = doc.data();
-      form.firstName.value = c.firstName;
-      form.lastName .value = c.lastName;
-      form.email    .value = c.email;
-      form.phone    .value = c.phone||'';
-      form.company  .value = c.company||'';
-      form.querySelectorAll('input[name="departments"]').forEach(cb => {
+      form.firstName.value=c.firstName;
+      form.lastName .value=c.lastName;
+      form.email    .value=c.email;
+      form.phone    .value=c.phone||'';
+      form.company  .value=c.company||'';
+      form.querySelectorAll('input[name="departments"]').forEach(cb=>{
         cb.checked = c.departments.includes(cb.value);
       });
-      editingId = id;
-      formTitle.textContent = 'Modifier un client';
-      saveBtn.textContent = 'Sauvegarder';
+      editingId=id;
+      formTitle.textContent='Modifier un client';
+      saveBtn.textContent='Sauvegarder';
     };
-    window.deleteClient = async id => {
-      if (confirm('Supprimer ce client ?')) {
+    window.deleteClient=async id=>{
+      if(confirm('Supprimer ce client ?')){
         await db.collection('clients').doc(id).delete();
         loadClientsWithCounts();
       }
     };
 
-    // 8) Lancement
     loadClientsWithCounts();
   });
   </script>
