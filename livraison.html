@@ -94,12 +94,10 @@
     const modalSaveBtn = document.getElementById('modalSave');
     const modalCancel  = document.getElementById('modalCancel');
 
-    console.log('modalSaveBtn →', modalSaveBtn);
-    modalSaveBtn.onclick = () => console.log('✓ click recu');
-
     let currentMonday = startOfWeek(new Date());
     let clients = [], deliveries = [], lastFileUrl = {};
 
+    // Helpers date
     function startOfWeek(d) {
       const day = d.getDay(), diff = d.getDate() - day;
       return new Date(d.setDate(diff));
@@ -108,6 +106,7 @@
       return d.toISOString().slice(0,10);
     }
 
+    // Charger clients
     async function loadClients() {
       const snap = await db.collection('clients').get();
       clients = snap.docs.map(d => ({ id:d.id, ...d.data() }));
@@ -120,6 +119,7 @@
       });
     }
 
+    // Charger leads
     async function loadDeliveries() {
       const snap = await db.collection('leads').get();
       deliveries = snap.docs.map(d => {
@@ -131,6 +131,7 @@
       renderWeek();
     }
 
+    // Afficher semaine
     function renderWeek() {
       const mon = startOfWeek(new Date(currentMonday));
       const sun = new Date(mon); sun.setDate(mon.getDate()+6);
@@ -151,12 +152,14 @@
         const td = document.createElement('td');
         td.className = 'border p-2 align-top';
 
+        // Titre cliquable
         const title = document.createElement('div');
         title.className = 'font-bold mb-1 cursor-pointer';
         title.textContent = ds;
         title.onclick = () => openModal(ds);
         td.append(title);
 
+        // Totaux par client + boutons
         const byClient = {};
         deliveries.filter(l => l.date === ds)
                   .forEach(l => byClient[l.clientId] = (byClient[l.clientId]||0) + l.quantity);
@@ -170,21 +173,23 @@
           label.textContent = `${cli.firstName||''} ${cli.lastName||''}: ${total}`;
 
           const btns = document.createElement('span');
+          // 🗑️ supprimer
           const del = document.createElement('button');
           del.innerHTML='🗑️'; del.className='text-red-500 mx-1';
           del.onclick = async ev => {
             ev.stopPropagation();
-            if(!confirm(`Supprimer leads ${cli.firstName} ${cli.lastName} le ${ds}?`))return;
-            const snap2=await db.collection('leads')
+            if(!confirm(`Supprimer leads ${cli.firstName} ${cli.lastName} le ${ds}?`)) return;
+            const snap2 = await db.collection('leads')
               .where('date','==',ds).where('clientId','==',cid).get();
-            const batch=db.batch();
-            snap2.docs.forEach(doc=>batch.delete(doc.ref));
+            const batch = db.batch();
+            snap2.docs.forEach(doc => batch.delete(doc.ref));
             await batch.commit();
             await loadDeliveries();
           };
+          // 📧 envoyer mail
           const mail = document.createElement('button');
           mail.innerHTML='📧'; mail.className='text-blue-500 mx-1';
-          mail.onclick = ev => {ev.stopPropagation(); sendMail(cid, ds);};
+          mail.onclick = ev => { ev.stopPropagation(); sendMail(cid, ds); };
 
           btns.append(del, mail);
           row.append(label, btns);
@@ -198,12 +203,103 @@
     prevWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()-7); renderWeek(); };
     nextWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()+7); renderWeek(); };
 
+    // Modal open/close
     function openModal(date) {
       modalDateEl.textContent = date;
       modalOverlay.classList.remove('hidden');
     }
     modalCancel.onclick = () => modalOverlay.classList.add('hidden');
 
+    // Enregistrement corrigé
+    modalSaveBtn.onclick = async () => {
+      console.log('✅ Enregistrement triggers');
+      const cid  = modalClient.value;
+      const file = modalFile.files[0];
+      if (!cid || !file) {
+        return alert('Client et fichier Excel obligatoires');
+      }
+      try {
+        // Upload Storage
+        const path = `leads/${cid}/${modalDateEl.textContent}/${file.name}`;
+        const ref  = storage.ref(path);
+        await ref.put(file);
+        const url  = await ref.getDownloadURL();
+
+        // Lecture Excel
+        const buf = await file.arrayBuffer();
+        const wb  = XLSX.read(buf);
+        const arr = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+        const idx = arr[0].findIndex(h => String(h).toLowerCase().includes('code'));
+        if (idx < 0) {
+          return alert('Impossible : colonne "code postal" introuvable');
+        }
+
+        // Comptage par département
+        const counts = {};
+        arr.slice(1).forEach(row => {
+          let cp = (row[idx]||'').toString().trim();
+          if (!cp) return;
+          let dep = cp.slice(0,2);
+          if (dep === '20') {
+            dep = parseInt(cp[2],10) < 2 ? '2A' : '2B';
+          }
+          counts[dep] = (counts[dep]||0) + 1;
+        });
+
+        // Batch Firestore
+        const batch = db.batch();
+        Object.entries(counts).forEach(([dep, qty]) => {
+          const docRef = db.collection('leads').doc();
+          batch.set(docRef, {
+            date:       modalDateEl.textContent,
+            clientId:   cid,
+            department: dep,
+            quantity:   qty,
+            fileUrl:    url
+          });
+        });
+        await batch.commit();
+
+        // Cleanup
+        modalOverlay.classList.add('hidden');
+        await loadDeliveries();
+        alert('✅ Leads importés avec succès !');
+      } catch (e) {
+        console.error(e);
+        alert('❌ Erreur lors de l’import. Vérifie la console.');
+      }
+    };
+
+    // Envoi e-mail
+    async function sendMail(clientId, date) {
+      const key = `${clientId}|${date}`, cli = clients.find(c=>c.id===clientId);
+      if (!lastFileUrl[key]) return alert('Pas de fichier ici.');
+      if (!cli || !cli.email) return alert('Email client manquant.');
+      const resp = await fetch(lastFileUrl[key]), blob = await resp.blob();
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onload = async () => {
+        const base64 = reader.result.split(',')[1];
+        try {
+          await emailjs.send(
+            'service_4j49l4e',
+            'template_g3tjird',
+            {
+              to_email: cli.email,
+              to_name:  `${cli.firstName} ${cli.lastName}`,
+              date, attachment: base64,
+              attachment_filename: `leads-${date}.xlsx`
+            }
+          );
+          alert('✉️ E-mail envoyé !');
+        } catch (err) {
+          console.error(err);
+          alert('❌ Erreur EmailJS');
+        }
+      };
+    }
+
+    // Init
     loadClients().then(loadDeliveries);
   });
   </script>
