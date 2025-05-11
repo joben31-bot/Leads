@@ -5,10 +5,12 @@
   <title>Livraisons – Import Excel par département</title>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS pour lire Excel -->
   <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col h-screen">
 
+  <!-- NAVIGATION -->
   <header class="bg-white shadow p-4 flex justify-between items-center">
     <h1 class="text-2xl font-bold">Agenda Livraisons</h1>
     <nav class="space-x-4 text-sm">
@@ -19,28 +21,34 @@
     </nav>
   </header>
 
+  <!-- CONTRÔLES -->
   <div class="p-4 bg-white flex items-center space-x-4">
-    <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Sem préc.</button>
-    <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Sem suiv. →</button>
+    <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Semaine préc.</button>
+    <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Semaine suiv. →</button>
     <span id="weekLabel" class="font-medium"></span>
   </div>
 
+  <!-- AGENDA HEBDO -->
   <div class="flex-1 overflow-auto p-4 bg-white">
     <table class="w-full table-fixed border-collapse">
-      <thead><tr id="headerRow"></tr></thead>
-      <tbody><tr id="weekRow"></tr></tbody>
+      <thead>
+        <tr id="headerRow"></tr>
+      </thead>
+      <tbody>
+        <tr id="weekRow"></tr>
+      </tbody>
     </table>
   </div>
 
-  <!-- Modal -->
+  <!-- MODAL IMPORT / ÉDITION -->
   <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
     <div class="bg-white p-6 rounded shadow-lg w-80">
       <h2 class="text-lg font-semibold mb-4" id="modalTitle">Importer leads</h2>
       <div class="space-y-3">
-        <label>Client
+        <label class="block">Client
           <select id="modalClient" class="w-full border p-2 rounded"></select>
         </label>
-        <label>Fichier Excel
+        <label class="block">Fichier Excel
           <input type="file" id="modalFile" accept=".xls,.xlsx" class="w-full border p-2 rounded"/>
         </label>
       </div>
@@ -64,7 +72,7 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // Firebase init
+    // 1) Initialisation Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -77,12 +85,13 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // DOM & state
+    // 2) DOM & état
     const headerRow     = document.getElementById('headerRow');
     const weekRow       = document.getElementById('weekRow');
     const weekLabel     = document.getElementById('weekLabel');
     const prevWeekBtn   = document.getElementById('prevWeek');
     const nextWeekBtn   = document.getElementById('nextWeek');
+
     const modalOverlay  = document.getElementById('modalOverlay');
     const modalTitle    = document.getElementById('modalTitle');
     const modalClient   = document.getElementById('modalClient');
@@ -103,7 +112,7 @@
       return d.toISOString().slice(0,10);
     }
 
-    // Charger clients
+    // 3) Charger clients
     async function loadClients() {
       const snap = await db.collection('clients').get();
       clients = snap.docs.map(d => ({ id:d.id, ...d.data() }));
@@ -116,19 +125,20 @@
       });
     }
 
-    // Charger imports
+    // 4) Charger imports existants
     async function loadDeliveries() {
       const snap = await db.collection('leads').get();
       deliveries = snap.docs.map(d => ({ id:d.id, ...d.data() }));
       renderWeek();
     }
 
-    // Construire grille hebdo
+    // 5) Construire la grille hebdo
     function renderWeek() {
       const mon = startOfWeek(new Date(currentMonday));
       const sun = new Date(mon); sun.setDate(mon.getDate()+6);
       weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
 
+      // En-tête
       headerRow.innerHTML = '';
       ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']
         .forEach(day => {
@@ -138,25 +148,26 @@
           headerRow.append(th);
         });
 
+      // Cells
       weekRow.innerHTML = '';
-      for(let i=0;i<7;i++){
-        const d=new Date(mon); d.setDate(mon.getDate()+i);
-        const ds=fmt(d);
-        const td=document.createElement('td');
+      for (let i=0; i<7; i++) {
+        const d = new Date(mon); d.setDate(mon.getDate()+i);
+        const ds = fmt(d);
+        const td = document.createElement('td');
         td.className='border align-top h-32 p-1 cursor-pointer';
         td.dataset.date=ds;
         td.innerHTML=`<div class="font-semibold mb-1">${ds}</div><div>&nbsp;</div>`;
-        td.onclick = ()=>openModal(ds);
+        td.onclick = () => openModal(ds);
         weekRow.append(td);
       }
 
-      // afficher existants
+      // Afficher imports existants
       deliveries
         .filter(x => x.date>=fmt(mon) && x.date<=fmt(sun))
         .forEach(appendDelivery);
     }
 
-    // Afficher un import
+    // 6) Afficher un import
     function appendDelivery(entry) {
       const td = document.querySelector(`td[data-date="${entry.date}"]`);
       if(!td) return;
@@ -171,53 +182,63 @@
       td.append(div);
     }
 
-    // Navigation
-    prevWeekBtn.onclick=()=>{ currentMonday.setDate(currentMonday.getDate()-7); renderWeek(); };
-    nextWeekBtn.onclick=()=>{ currentMonday.setDate(currentMonday.getDate()+7); renderWeek(); };
+    // 7) Navigation semaine
+    prevWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()-7); renderWeek(); };
+    nextWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()+7); renderWeek(); };
 
-    // Modal
+    // 8) Modal open/close
     function openModal(date, id=null) {
-      editingDate=date; editingId=id;
-      modalTitle.textContent = id?`Modifier ${date}`:`Importer ${date}`;
+      editingDate = date;
+      editingId   = id;
+      modalTitle.textContent = id ? `Modifier ${date}` : `Importer ${date}`;
       modalFile.value = null;
       modalDeleteBtn.classList.toggle('hidden', !id);
       modalOverlay.classList.remove('hidden');
     }
-    modalCancelBtn.onclick = ()=>modalOverlay.classList.add('hidden');
+    modalCancelBtn.onclick = () => modalOverlay.classList.add('hidden');
 
-    // Enregistrer import (par département)  
+    // 9) Enregistrer import (par département)
     modalSaveBtn.onclick = async () => {
       const cid  = modalClient.value;
       const file = modalFile.files[0];
       if(!cid)  return alert('Sélectionnez un client');
       if(!file) return alert('Choisissez un fichier Excel');
 
-      // lire Excel
-      const data = await file.arrayBuffer();
-      const wb   = XLSX.read(data);
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+      // Lire le fichier en array of arrays
+      const data  = await file.arrayBuffer();
+      const wb    = XLSX.read(data);
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const arr   = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      if (arr.length < 2) return alert('Le fichier est vide ou sans en-tête');
 
-      // extraire code dept de chaque ligne
+      // Trouver l’index de la colonne "Departement"
+      const header = arr[0].map(h => String(h).toLowerCase());
+      const idxDept = header.findIndex(h => h.includes('depart'));
+      if (idxDept < 0) return alert('Impossible de trouver la colonne “Departement”');
+
+      // Filtrer les vraies lignes et compter par code (2 premiers caractères)
+      const dataRows = arr.slice(1).filter(r => r[idxDept] != null && String(r[idxDept]).trim() !== '');
+      if (dataRows.length === 0) return alert('Aucune donnée de leads trouvée');
+
       const counts = {};
-      rows.forEach(r => {
-        const key = Object.keys(r)
-          .find(k => k.toLowerCase().includes('dept'));
-        const dep = r[key];
-        if(dep) counts[dep] = (counts[dep]||0) + 1;
+      dataRows.forEach(r => {
+        const raw = String(r[idxDept]).trim();
+        const dep = raw.slice(0,2);
+        counts[dep] = (counts[dep] || 0) + 1;
       });
 
+      // Batch Firestore
       const batch = db.batch();
-      // supprimer ancien s’il y a modif
-      if(editingId) batch.delete(db.collection('leads').doc(editingId));
-
-      // créer un doc par département
-      Object.entries(counts).forEach(([dep,qty])=>{
+      if (editingId) {
+        batch.delete(db.collection('leads').doc(editingId));
+      }
+      Object.entries(counts).forEach(([dep,qty]) => {
         const ref = db.collection('leads').doc();
         batch.set(ref, {
-          clientId: cid,
-          date: editingDate,
+          clientId:   cid,
+          date:       editingDate,
           department: dep,
-          quantity: qty
+          quantity:   qty
         });
       });
 
@@ -225,18 +246,18 @@
       modalOverlay.classList.add('hidden');
     };
 
-    // Supprimer import
+    // 10) Supprimer import
     modalDeleteBtn.onclick = async () => {
-      if(editingId && confirm('Supprimer cet import ?')) {
+      if (editingId && confirm('Supprimer cet import ?')) {
         await db.collection('leads').doc(editingId).delete();
         modalOverlay.classList.add('hidden');
       }
     };
 
-    // démarrer
+    // 11) Démarrage
     loadClients().then(loadDeliveries);
-
   });
   </script>
 </body>
 </html>
+
