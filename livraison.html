@@ -4,7 +4,9 @@
   <meta charset="UTF-8"/>
   <title>Livraisons – Totaux par Client</title>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS pour lire les fichiers Excel -->
   <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col h-screen">
@@ -35,20 +37,25 @@
     </table>
   </div>
 
-  <!-- MODAL STANDARD D’IMPORT PAR DÉPARTEMENT -->
+  <!-- MODAL D’IMPORT / ÉDITION PAR DÉPARTEMENT -->
   <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
     <div class="bg-white p-6 rounded shadow-lg w-80 max-h-[80vh] overflow-auto">
-      <h2 id="modalTitle" class="text-lg font-semibold mb-4">Importer leads du <span id="modalDate"></span></h2>
+      <h2 id="modalTitle" class="text-lg font-semibold mb-4">
+        Importer leads du <span id="modalDate"></span>
+      </h2>
       <div class="space-y-3">
         <label class="block">Client
           <select id="modalClient" class="w-full border p-2 rounded"></select>
         </label>
         <label class="block">Fichier Excel
-          <input type="file" id="modalFile" accept=".xlsx,.xls" class="w-full border p-2 rounded"/>
+          <input type="file" id="modalFile" accept=".xlsx,.xls"
+                 class="w-full border p-2 rounded"/>
         </label>
       </div>
       <div class="mt-4 flex justify-between items-center">
-        <button id="modalDelete" class="px-4 py-2 bg-red-500 text-white rounded hidden">Suppr.</button>
+        <button id="modalDelete" class="px-4 py-2 bg-red-500 text-white rounded hidden">
+          Suppr.
+        </button>
         <div class="flex gap-2">
           <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
           <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
@@ -63,7 +70,7 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // Init Firebase
+    // --- 1) Initialisation Firebase ---
     const firebaseConfig = {
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -76,7 +83,7 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // DOM refs
+    // --- 2) Références DOM & état ---
     const headerRow    = document.getElementById('headerRow');
     const weekRow      = document.getElementById('weekRow');
     const weekLabel    = document.getElementById('weekLabel');
@@ -94,8 +101,9 @@
 
     let currentMonday = startOfWeek(new Date());
     let clients = [], deliveries = [];
+    let editingDate = null, editingId = null;
 
-    // Helpers
+    // --- 3) Helpers date ---
     function startOfWeek(d) {
       const day = d.getDay(), diff = d.getDate() - day;
       return new Date(d.setDate(diff));
@@ -104,7 +112,7 @@
       return d.toISOString().slice(0,10);
     }
 
-    // Load clients into modal select
+    // --- 4) Charger clients dans la sélection du modal ---
     async function loadClients() {
       const snap = await db.collection('clients').get();
       clients = snap.docs.map(d => ({ id:d.id, ...d.data() }));
@@ -117,67 +125,72 @@
       });
     }
 
-    // Load all leads
+    // --- 5) Charger tous les leads depuis Firestore ---
     async function loadDeliveries() {
       const snap = await db.collection('leads').get();
       deliveries = snap.docs.map(d => ({ id:d.id, ...d.data() }));
       renderWeek();
     }
 
-    // Render weekly grid: group by client, show total & delete button
+    // --- 6) Rendu de la grille hebdo (total par client) ---
     function renderWeek() {
       const mon = startOfWeek(new Date(currentMonday));
-      const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
       weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
 
-      // Header
+      // En-tête
       headerRow.innerHTML = '';
-      ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'].forEach(day => {
-        const th = document.createElement('th');
-        th.className = 'border p-2';
-        th.textContent = day;
-        headerRow.append(th);
-      });
+      ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']
+        .forEach(day => {
+          const th = document.createElement('th');
+          th.className = 'border p-2';
+          th.textContent = day;
+          headerRow.append(th);
+        });
 
-      // Days
+      // Jours
       weekRow.innerHTML = '';
-      for (let i=0; i<7; i++) {
-        const d = new Date(mon); d.setDate(mon.getDate()+i);
+      for (let i = 0; i < 7; i++) {
+        const d  = new Date(mon);
+        d.setDate(mon.getDate() + i);
         const ds = fmt(d);
 
-        // Aggregate per client
+        // Agréger par client pour ce jour
         const byClient = {};
-        deliveries.filter(x => x.date === ds)
-                  .forEach(x => {
-                    byClient[x.clientId] = (byClient[x.clientId]||0) + x.quantity;
-                  });
+        deliveries
+          .filter(x => x.date === ds)
+          .forEach(x => {
+            byClient[x.clientId] = (byClient[x.clientId] || 0) + x.quantity;
+          });
 
-        // Build cell
+        // Construire la cellule
         const td = document.createElement('td');
-        td.className = 'border align-top p-1';
-        td.dataset.date = ds;
+        td.className   = 'border align-top p-2';
+        td.dataset.date= ds;
 
+        // Date cliquée ouvre le modal
         const title = document.createElement('div');
         title.className = 'font-semibold mb-1 cursor-pointer';
         title.textContent = ds;
-        title.onclick = () => openModal(ds);
+        title.onclick = () => openModal(ds, null);
         td.append(title);
 
-        // List each client + total + delete btn
+        // Liste client:total + icône poubelle
         Object.entries(byClient).forEach(([cid, total]) => {
-          const cli = clients.find(c => c.id===cid) || {};
+          const cli = clients.find(c => c.id === cid) || {};
           const row = document.createElement('div');
-          row.className = 'flex justify-between items-center mb-1 text-sm cursor-pointer';
-          row.onclick = () => openModal(ds);
+          row.className = 'flex justify-between items-center mb-1 text-sm';
+          // clic sur le nom aussi ouvre modal édition
+          row.onclick = () => openModal(ds, null);
           row.innerHTML = `
             <span>${cli.firstName||''} ${cli.lastName||''}: ${total}</span>
             <button class="delete-btn text-red-500 px-1">🗑️</button>
           `;
-          // delete on click of trash
+          // handler suppression rapide
           row.querySelector('.delete-btn').onclick = async ev => {
             ev.stopPropagation();
-            if (!confirm(`Supprimer tous les leads de ${cli.firstName} ${cli.lastName} le ${ds} ?`)) return;
-            // delete all docs for that date+client
+            if (!confirm(\`Supprimer tous les leads de \${cli.firstName} \${cli.lastName} le \${ds} ?\`)) return;
+            // supprimer tous les docs date+client
             const snap = await db.collection('leads')
               .where('date','==',ds)
               .where('clientId','==',cid).get();
@@ -193,28 +206,96 @@
       }
     }
 
-    // Navigation
+    // --- 7) Navigation entre semaines ---
     prevWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate()-7);
+      currentMonday.setDate(currentMonday.getDate() - 7);
       renderWeek();
     };
     nextWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate()+7);
+      currentMonday.setDate(currentMonday.getDate() + 7);
       renderWeek();
     };
 
-    // Modal (import per dept) — unchanged
-    function openModal(date, id=null) {
+    // --- 8) Modal Import / Édition par département ---
+    function openModal(date, id = null) {
+      editingDate = date;
+      editingId   = id;
       modalDateEl.textContent = date;
-      modalTitle.textContent = id ? `Modifier ${date}` : `Importer ${date}`;
+      modalTitle.textContent  = id
+        ? \`Modifier import du \${date}\`
+        : \`Importer leads du \${date}\`;
       modalDelete.classList.toggle('hidden', !id);
       modalOverlay.classList.remove('hidden');
     }
     modalCancel.onclick = () => modalOverlay.classList.add('hidden');
-    modalSave.onclick = async () => { /* ... ton code import/excel/dept ... */ };
-    modalDelete.onclick = async () => { /* ... supprimer import existant ... */ };
 
-    // Init
+    // Handler complet d’enregistrement + découpe Excel → Firestore
+    modalSave.onclick = async () => {
+      const cid  = modalClient.value;
+      const file = modalFile.files[0];
+      if (!cid)  return alert('Sélectionnez un client');
+      if (!file) return alert('Choisissez un fichier Excel');
+
+      // Lire l’Excel
+      const data  = await file.arrayBuffer();
+      const wb    = XLSX.read(data);
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const arr   = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      if (arr.length < 2) return alert('Fichier vide');
+
+      // Trouver colonne code postal
+      const headers   = arr[0].map(h => String(h).toLowerCase());
+      const idxPostal = headers.findIndex(h =>
+        h.includes('postal') || h.includes('code')
+      );
+      if (idxPostal < 0) return alert('Colonne code postal introuvable');
+
+      // Calculer counts par département
+      const counts = {};
+      arr.slice(1).forEach(row => {
+        const cp = String(row[idxPostal]||'').trim();
+        if (!cp) return;
+        let dep = cp.slice(0,2);
+        if (dep === '20' && cp.length >= 3) {
+          dep = parseInt(cp[2],10) < 2 ? '2A' : '2B';
+        }
+        counts[dep] = (counts[dep] || 0) + 1;
+      });
+      if (Object.keys(counts).length === 0) {
+        return alert('Aucune donnée valide dans le fichier');
+      }
+
+      // Batch write sur Firestore
+      const batch = db.batch();
+      if (editingId) {
+        batch.delete(db.collection('leads').doc(editingId));
+      }
+      Object.entries(counts).forEach(([dep,qty]) => {
+        const ref = db.collection('leads').doc();
+        batch.set(ref, {
+          clientId:   cid,
+          date:       editingDate,
+          department: dep,
+          quantity:   qty
+        });
+      });
+      await batch.commit();
+
+      // Rafraîchir et fermer modal
+      await loadDeliveries();
+      modalOverlay.classList.add('hidden');
+    };
+
+    // Suppression d’un import unique
+    modalDelete.onclick = async () => {
+      if (!editingId) return;
+      if (!confirm('Supprimer cet import ?')) return;
+      await db.collection('leads').doc(editingId).delete();
+      modalOverlay.classList.add('hidden');
+      await loadDeliveries();
+    };
+
+    // --- 9) Démarrage initial ---
     loadClients().then(loadDeliveries);
   });
   </script>
