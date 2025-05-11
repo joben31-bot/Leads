@@ -28,7 +28,7 @@
     </nav>
   </header>
 
-  <!-- CONTROLES SEMAINE -->
+  <!-- CONTRÔLES SEMAINE -->
   <div class="p-4 bg-white flex items-center gap-4">
     <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Sem préc.</button>
     <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Sem suiv. →</button>
@@ -168,7 +168,7 @@
 
         Object.entries(byClient).forEach(([cid, total]) => {
           const cli = clients.find(c => c.id === cid) || {};
-          const row= document.createElement('div');
+          const row = document.createElement('div');
           row.className = 'flex items-center justify-between text-sm mb-1';
 
           const label = document.createElement('span');
@@ -214,7 +214,7 @@
 
     // 8) Enregistrement
     modalSaveBtn.onclick = async () => {
-      console.log('→ modalSaveBtn clicked');  // debug
+      console.log('→ modalSaveBtn clicked');
       const cid = modalClient.value, file = modalFile.files[0];
       if (!cid || !file) return alert('Client + fichier requis');
       // Upload
