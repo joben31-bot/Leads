@@ -197,22 +197,26 @@
     }
     modalCancelBtn.onclick = () => modalOverlay.classList.add('hidden');
 
-    // 9) Enregistrer import simplifié
+    // 9) Enregistrer import simplifié (ignorer lignes vides)
     modalSaveBtn.onclick = async () => {
       const cid  = modalClient.value;
       const file = modalFile.files[0];
       if(!cid)  return alert('Sélectionnez un client');
       if(!file) return alert('Choisissez un fichier Excel');
 
-      // Lire le fichier en array of arrays
+      // Lire en array of arrays
       const data  = await file.arrayBuffer();
       const wb    = XLSX.read(data);
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const arr   = XLSX.utils.sheet_to_json(sheet, { header: 1 });
       if (arr.length < 2) return alert('Le fichier est vide ou sans en-tête');
 
-      // Compter toutes les lignes hors en-tête
-      const totalRows = arr.length - 1;
+      // Ne retenir que les lignes comportant au moins une cellule non vide
+      const dataRows = arr.slice(1).filter(row =>
+        row.some(cell => cell != null && String(cell).trim() !== '')
+      );
+      const totalRows = dataRows.length;
+      if (totalRows === 0) return alert('Aucune donnée de leads trouvée');
 
       // Créer ou mettre à jour le document unique
       if (editingId) {
