@@ -32,7 +32,7 @@
     </button>
   </div>
 
-  <!-- CONTENEUR DE RAPPORT -->
+  <!-- CONTENEUR -->
   <div id="reportContainer" class="space-y-8"></div>
 
   <!-- Firebase SDKs -->
@@ -41,7 +41,7 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // Init Firebase
+    // Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -54,59 +54,56 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    const startDate   = document.getElementById('startDate');
-    const endDate     = document.getElementById('endDate');
-    const refreshBtn  = document.getElementById('refreshBtn');
-    const container   = document.getElementById('reportContainer');
+    const startDate  = document.getElementById('startDate');
+    const endDate    = document.getElementById('endDate');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const container  = document.getElementById('reportContainer');
 
-    // Valeurs par défaut (7 derniers jours)
+    // défaut → 7 derniers jours
     const today = new Date(), prior = new Date();
-    prior.setDate(today.getDate() - 6);
+    prior.setDate(today.getDate()-6);
     startDate.value = prior.toISOString().slice(0,10);
     endDate.value   = today.toISOString().slice(0,10);
 
     refreshBtn.onclick = async () => {
       container.innerHTML = '';
-      // Valider dates
       const sd = new Date(startDate.value), ed = new Date(endDate.value);
-      if (!sd || !ed || sd > ed) return alert('Période invalide');
+      if (!sd||!ed||sd>ed) return alert('Période invalide');
 
-      // Construire liste des dates
+      // liste dates
       const dates = [];
-      for (let d = new Date(sd); d <= ed; d.setDate(d.getDate() + 1)) {
+      for (let d=new Date(sd); d<=ed; d.setDate(d.getDate()+1)) {
         dates.push(d.toISOString().slice(0,10));
       }
 
-      // Charger tous les leads sur cette période
+      // charger leads
       const snap = await db.collection('leads')
-        .where('date','in', dates).get();
-      const leads = snap.docs.map(d => d.data());
+        .where('date','in',dates).get();
+      const leads = snap.docs.map(d=>d.data());
 
-      // Charger noms clients
-      const snapClients = await db.collection('clients').get();
+      // charger clients
+      const snapC = await db.collection('clients').get();
       const clientsMap = {};
-      snapClients.docs.forEach(d => {
-        clientsMap[d.id] = d.data();
+      snapC.docs.forEach(d=>clientsMap[d.id]=d.data());
+
+      // grouper date → client → dept
+      const report={};
+      leads.forEach(({date,clientId,department,quantity})=>{
+        report[date]=report[date]||{};
+        report[date][clientId]=report[date][clientId]||{};
+        const d=department||'—';
+        report[date][clientId][d] =
+          (report[date][clientId][d]||0)+quantity;
       });
 
-      // Grouper par date → client → département
-      const report = {};
-      leads.forEach(({ date, clientId, department, quantity }) => {
-        if (!report[date]) report[date] = {};
-        if (!report[date][clientId]) report[date][clientId] = {};
-        report[date][clientId][department || '—'] =
-          (report[date][clientId][department] || 0) + quantity;
-      });
-
-      // Afficher section par date
-      dates.forEach(date => {
-        const dayData = report[date] || {};
+      // afficher
+      dates.forEach(date=>{
+        const dayData = report[date]||{};
         const section = document.createElement('section');
         section.innerHTML = `<h2 class="text-xl font-semibold mb-2">${date}</h2>`;
-
         const table = document.createElement('table');
-        table.className = 'w-full table-auto border-collapse bg-white';
-        table.innerHTML = `
+        table.className='w-full table-auto border-collapse bg-white';
+        table.innerHTML=`
           <thead class="bg-gray-100">
             <tr>
               <th class="border p-2">Client</th>
@@ -114,29 +111,24 @@
               <th class="border p-2">Leads</th>
             </tr>
           </thead>
-          <tbody></tbody>
-        `;
+          <tbody></tbody>`;
         const tbody = table.querySelector('tbody');
-
-        Object.entries(dayData).forEach(([cid, deps]) => {
-          const client = clientsMap[cid] || {};
-          Object.entries(deps).forEach(([dep, qty]) => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-              <td class="border p-2">${client.firstName || ''} ${client.lastName || ''}</td>
+        Object.entries(dayData).forEach(([cid,deps])=>{
+          const client=clientsMap[cid]||{};
+          Object.entries(deps).forEach(([dep,qty])=>{
+            const tr=document.createElement('tr');
+            tr.innerHTML=`
+              <td class="border p-2">${client.firstName||''} ${client.lastName||''}</td>
               <td class="border p-2">${dep}</td>
-              <td class="border p-2 text-right">${qty}</td>
-            `;
+              <td class="border p-2 text-right">${qty}</td>`;
             tbody.append(tr);
           });
         });
-
         section.append(table);
         container.append(section);
       });
     };
 
-    // Lancement initial
     refreshBtn.click();
   });
   </script>
