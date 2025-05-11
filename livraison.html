@@ -78,11 +78,20 @@
           <input type="number" id="modalQty" class="w-full border p-2 rounded" min="0"/>
         </label>
       </div>
-      <div class="mt-4 flex justify-end gap-2">
-        <button id="modalDelete" class="px-4 py-2 bg-red-300 rounded hidden">Supprimer</button>
-        <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
-        <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
-      </div>
+    <div class="mt-4 flex justify-between items-center">
+  <!-- Supprimer à gauche -->
+  <button id="modalDelete"
+          class="bg-red-500 text-white rounded text-sm"
+          style="padding: 0.25rem 0.5rem; min-width:4rem;">
+    Supprimer
+  </button>
+  <!-- Annuler + Enregistrer à droite -->
+  <div class="flex gap-2">
+    <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+    <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
+  </div>
+</div>
+
     </div>
   </div>
 
