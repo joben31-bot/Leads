@@ -1,46 +1,230 @@
 <!DOCTYPE html>
 <html lang="fr">
-<head><meta charset="UTF-8"/><title>Clients – Gestion</title>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<script src="https://cdn.tailwindcss.com"></script></head>
+<head>
+  <meta charset="UTF-8" />
+  <title>Clients – Gestion</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
 <body class="bg-gray-100 flex flex-col h-screen">
-<header class="bg-white p-4 flex justify-between"><h1 class="text-2xl">Clients</h1>
-<nav><a href="index.html">Accueil</a></nav>
-</header>
-<div class="flex-1 grid lg:grid-cols-3">
-<aside class="p-6 bg-white overflow-y-auto">
-<h2 id="formTitle">Ajouter un client</h2>
-<form id="clientForm" class="space-y-4">
-<label>Prénom<br><input id="firstName" required class="w-full border p-2"/></label>
-<label>Nom<br><input id="lastName" required class="w-full border p-2"/></label>
-<label>Email<br><input id="email" required class="w-full border p-2"/></label>
-<label>Tél<br><input id="phone" class="w-full border p-2"/></label>
-<label>Société<br><input id="company" class="w-full border p-2"/></label>
-<label class="block">Départements</label>
-<div id="departmentsCheckboxes" class="border h-40 overflow-y-auto p-2 grid grid-cols-2 gap-1"></div>
-<div><button type="submit" id="saveBtn" class="bg-blue-600 text-white px-4 py-2">Enregistrer</button></div>
-</form>
-<button id="exportCsv" class="bg-green-500 text-white px-4 py-2 mt-4">Exporter CSV</button>
-</aside>
-<main class="p-6 bg-white overflow-auto">
-<table class="min-w-full"><thead><tr>
-<th>Prénom</th><th>Nom</th><th>Email</th><th>Tél</th><th>Société</th><th>Dpts</th><th>Actions</th>
-</tr></thead><tbody id="clientsTableBody"/></table>
-</main></div>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
-<script>
-const firebaseConfig = {apiKey:"AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",authDomain:"lead-f9f71.firebaseapp.com",projectId:"lead-f9f71",storageBucket:"lead-f9f71.firebasestorage.app",messagingSenderId:"243276469711",appId:"1:243276469711:web:1aea9eba2a33e1c8026eba",measurementId:"G-BM1YRHR193"};
-firebase.initializeApp(firebaseConfig);const db=firebase.firestore();
-const departmentsList = [{"code": "01", "nom": ""}, {"code": "02", "nom": ""}, {"code": "03", "nom": ""}, {"code": "04", "nom": ""}, {"code": "05", "nom": ""}, {"code": "06", "nom": ""}, {"code": "07", "nom": ""}, {"code": "08", "nom": ""}, {"code": "09", "nom": ""}, {"code": "10", "nom": ""}, {"code": "11", "nom": ""}, {"code": "12", "nom": ""}, {"code": "13", "nom": ""}, {"code": "14", "nom": ""}, {"code": "15", "nom": ""}, {"code": "16", "nom": ""}, {"code": "17", "nom": ""}, {"code": "18", "nom": ""}, {"code": "19", "nom": ""}, {"code": "20", "nom": ""}, {"code": "21", "nom": ""}, {"code": "22", "nom": ""}, {"code": "23", "nom": ""}, {"code": "24", "nom": ""}, {"code": "25", "nom": ""}, {"code": "26", "nom": ""}, {"code": "27", "nom": ""}, {"code": "28", "nom": ""}, {"code": "29", "nom": ""}, {"code": "30", "nom": ""}, {"code": "31", "nom": ""}, {"code": "32", "nom": ""}, {"code": "33", "nom": ""}, {"code": "34", "nom": ""}, {"code": "35", "nom": ""}, {"code": "36", "nom": ""}, {"code": "37", "nom": ""}, {"code": "38", "nom": ""}, {"code": "39", "nom": ""}, {"code": "40", "nom": ""}, {"code": "41", "nom": ""}, {"code": "42", "nom": ""}, {"code": "43", "nom": ""}, {"code": "44", "nom": ""}, {"code": "45", "nom": ""}, {"code": "46", "nom": ""}, {"code": "47", "nom": ""}, {"code": "48", "nom": ""}, {"code": "49", "nom": ""}, {"code": "50", "nom": ""}, {"code": "51", "nom": ""}, {"code": "52", "nom": ""}, {"code": "53", "nom": ""}, {"code": "54", "nom": ""}, {"code": "55", "nom": ""}, {"code": "56", "nom": ""}, {"code": "57", "nom": ""}, {"code": "58", "nom": ""}, {"code": "59", "nom": ""}, {"code": "60", "nom": ""}, {"code": "61", "nom": ""}, {"code": "62", "nom": ""}, {"code": "63", "nom": ""}, {"code": "64", "nom": ""}, {"code": "65", "nom": ""}, {"code": "66", "nom": ""}, {"code": "67", "nom": ""}, {"code": "68", "nom": ""}, {"code": "69", "nom": ""}, {"code": "70", "nom": ""}, {"code": "71", "nom": ""}, {"code": "72", "nom": ""}, {"code": "73", "nom": ""}, {"code": "74", "nom": ""}, {"code": "75", "nom": ""}, {"code": "76", "nom": ""}, {"code": "77", "nom": ""}, {"code": "78", "nom": ""}, {"code": "79", "nom": ""}, {"code": "80", "nom": ""}, {"code": "81", "nom": ""}, {"code": "82", "nom": ""}, {"code": "83", "nom": ""}, {"code": "84", "nom": ""}, {"code": "85", "nom": ""}, {"code": "86", "nom": ""}, {"code": "87", "nom": ""}, {"code": "88", "nom": ""}, {"code": "89", "nom": ""}, {"code": "90", "nom": ""}, {"code": "91", "nom": ""}, {"code": "92", "nom": ""}, {"code": "93", "nom": ""}, {"code": "94", "nom": ""}, {"code": "95", "nom": ""}];
-const cbContainer = document.getElementById('departmentsCheckboxes');
-departmentsList.forEach(d=>{const l=document.createElement('label');l.className='inline-flex items-center text-sm';const cb=document.createElement('input');cb.type='checkbox';cb.name='departments';cb.value=d.code;cb.className='mr-1';l.append(cb,d.code);cbContainer.append(l);});
-const form=document.getElementById('clientForm'),tbody=document.getElementById('clientsTableBody');
-let editingId=null,clients=[];
-async function loadClients(){const s=await db.collection('clients').get();clients=s.docs.map(d=>({id:d.id,...d.data()}));renderTable();}
-function renderTable(){tbody.innerHTML='';clients.forEach(c=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${c.firstName}</td><td>${c.lastName}</td><td>${c.email}</td><td>${c.phone||''}</td><td>${c.company||''}</td><td>${(c.departments||[]).join(', ')}</td><td><button onclick="editClient('${c.id}')">✏️</button><button onclick="deleteClient('${c.id}')">🗑️</button></td>`;tbody.append(tr);});}
-form.addEventListener('submit',async e=>{e.preventDefault();const deps=Array.from(document.querySelectorAll('input[name="departments"]:checked')).map(cb=>cb.value);const r={firstName:form.firstName.value,lastName:form.lastName.value,email:form.email.value,phone:form.phone.value,company:form.company.value,departments:deps};if(editingId){await db.collection('clients').doc(editingId).set(r);editingId=null;}else await db.collection('clients').add(r);form.reset();loadClients();});
-window.deleteClient=async id=>{if(confirm('Supprimer?')){await db.collection('clients').doc(id).delete();loadClients();}};
-window.editClient=id=>{const c=clients.find(x=>x.id===id);form.firstName.value=c.firstName;form.lastName.value=c.lastName;form.email.value=c.email;form.phone.value=c.phone||'';form.company.value=c.company||'';document.querySelectorAll('input[name="departments"]').forEach(cb=>cb.checked=(c.departments||[]).includes(cb.value));editingId=id;document.getElementById('formTitle').textContent='Modifier';document.getElementById('saveBtn').textContent='Sauvegarder';};
-loadClients();
-</script>
+
+  <!-- NAVIGATION -->
+  <header class="bg-white shadow p-4 flex justify-between items-center">
+    <h1 class="text-2xl font-bold">Gestion Clients</h1>
+    <nav class="space-x-4">
+      <a href="index.html"     class="text-gray-600 hover:text-blue-600">Accueil</a>
+      <a href="clients.html"   class="text-blue-600 font-semibold">Clients</a>
+      <a href="livraison.html" class="text-gray-600 hover:text-blue-600">Livraisons</a>
+      <a href="rapport.html"   class="text-gray-600 hover:text-blue-600">Rapports</a>
+    </nav>
+  </header>
+
+  <div class="flex-1 grid grid-cols-1 lg:grid-cols-3 overflow-hidden">
+
+    <!-- FORMULAIRE + DÉPARTEMENTS -->
+    <aside class="lg:col-span-1 p-6 bg-white overflow-y-auto">
+      <h2 id="formTitle" class="text-xl font-semibold mb-4">Ajouter un client</h2>
+      <form id="clientForm" class="space-y-4">
+        <label class="block">Prénom
+          <input type="text" id="firstName" required class="w-full border p-2 rounded">
+        </label>
+        <label class="block">Nom
+          <input type="text" id="lastName"  required class="w-full border p-2 rounded">
+        </label>
+        <label class="block">Email
+          <input type="email" id="email"    required class="w-full border p-2 rounded">
+        </label>
+        <label class="block">Téléphone
+          <input type="tel" id="phone" class="w-full border p-2 rounded">
+        </label>
+        <label class="block">Société
+          <input type="text" id="company" class="w-full border p-2 rounded">
+        </label>
+
+        <div>
+          <label class="block mb-1 font-medium">Départements</label>
+          <div id="departmentsCheckboxes"
+               class="border rounded h-40 overflow-y-auto p-2 grid grid-cols-2 gap-1">
+            <!-- Les cases seront générées par JavaScript -->
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2">
+          <button type="reset" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+          <button type="submit" id="saveBtn" class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
+        </div>
+      </form>
+
+      <button id="exportCsv" class="mt-6 px-4 py-2 bg-green-500 text-white rounded">Exporter CSV</button>
+    </aside>
+
+    <!-- TABLEAU DES CLIENTS -->
+    <main class="lg:col-span-2 p-6 bg-white overflow-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="p-2">Prénom</th>
+            <th class="p-2">Nom</th>
+            <th class="p-2">Email</th>
+            <th class="p-2">Tél</th>
+            <th class="p-2">Société</th>
+            <th class="p-2">Dpts</th>
+            <th class="p-2">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="clientsTableBody"></tbody>
+      </table>
+    </main>
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+
+  <script>
+    // 1) Initialisation Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
+      authDomain: "lead-f9f71.firebaseapp.com",
+      projectId: "lead-f9f71",
+      storageBucket: "lead-f9f71.firebasestorage.app",
+      messagingSenderId: "243276469711",
+      appId: "1:243276469711:web:1aea9eba2a33e1c8026eba",
+      measurementId: "G-BM1YRHR193"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // 2) Liste complète des départements (code + nom)
+    const departmentsList = [
+      {"code":"01","nom":"Ain"},{"code":"02","nom":"Aisne"},{"code":"03","nom":"Allier"},
+      {"code":"04","nom":"Alpes-de-Haute-Provence"},{"code":"05","nom":"Hautes-Alpes"},
+      {"code":"06","nom":"Alpes-Maritimes"},{"code":"07","nom":"Ardèche"},{"code":"08","nom":"Ardennes"},
+      {"code":"09","nom":"Ariège"},{"code":"10","nom":"Aube"},{"code":"11","nom":"Aude"},
+      {"code":"12","nom":"Aveyron"},{"code":"13","nom":"Bouches-du-Rhône"},{"code":"14","nom":"Calvados"},
+      {"code":"15","nom":"Cantal"},{"code":"16","nom":"Charente"},{"code":"17","nom":"Charente-Maritime"},
+      {"code":"18","nom":"Cher"},{"code":"19","nom":"Corrèze"},{"code":"2A","nom":"Corse-du-Sud"},
+      {"code":"2B","nom":"Haute-Corse"},{"code":"21","nom":"Côte-d'Or"},{"code":"22","nom":"Côtes-d'Armor"},
+      {"code":"23","nom":"Creuse"},{"code":"24","nom":"Dordogne"},{"code":"25","nom":"Doubs"},
+      {"code":"26","nom":"Drôme"},{"code":"27","nom":"Eure"},{"code":"28","nom":"Eure-et-Loir"},
+      {"code":"29","nom":"Finistère"},{"code":"30","nom":"Gard"},{"code":"31","nom":"Haute-Garonne"},
+      {"code":"32","nom":"Gers"},{"code":"33","nom":"Gironde"},{"code":"34","nom":"Hérault"},
+      {"code":"35","nom":"Ille-et-Vilaine"},{"code":"36","nom":"Indre"},{"code":"37","nom":"Indre-et-Loire"},
+      {"code":"38","nom":"Isère"},{"code":"39","nom":"Jura"},{"code":"40","nom":"Landes"},
+      {"code":"41","nom":"Loir-et-Cher"},{"code":"42","nom":"Loire"},{"code":"43","nom":"Haute-Loire"},
+      {"code":"44","nom":"Loire-Atlantique"},{"code":"45","nom":"Loiret"},{"code":"46","nom":"Lot"},
+      {"code":"47","nom":"Lot-et-Garonne"},{"code":"48","nom":"Lozère"},{"code":"49","nom":"Maine-et-Loire"},
+      {"code":"50","nom":"Manche"},{"code":"51","nom":"Marne"},{"code":"52","nom":"Haute-Marne"},
+      {"code":"53","nom":"Mayenne"},{"code":"54","nom":"Meurthe-et-Moselle"},{"code":"55","nom":"Meuse"},
+      {"code":"56","nom":"Morbihan"},{"code":"57","nom":"Moselle"},{"code":"58","nom":"Nièvre"},
+      {"code":"59","nom":"Nord"},{"code":"60","nom":"Oise"},{"code":"61","nom":"Orne"},
+      {"code":"62","nom":"Pas-de-Calais"},{"code":"63","nom":"Puy-de-Dôme"},{"code":"64","nom":"Pyrénées-Atlantiques"},
+      {"code":"65","nom":"Hautes-Pyrénées"},{"code":"66","nom":"Pyrénées-Orientales"},{"code":"67","nom":"Bas-Rhin"},
+      {"code":"68","nom":"Haut-Rhin"},{"code":"69","nom":"Rhône"},{"code":"70","nom":"Haute-Saône"},
+      {"code":"71","nom":"Saône-et-Loire"},{"code":"72","nom":"Sarthe"},{"code":"73","nom":"Savoie"},
+      {"code":"74","nom":"Haute-Savoie"},{"code":"75","nom":"Paris"},{"code":"76","nom":"Seine-Maritime"},
+      {"code":"77","nom":"Seine-et-Marne"},{"code":"78","nom":"Yvelines"},{"code":"79","nom":"Deux-Sèvres"},
+      {"code":"80","nom":"Somme"},{"code":"81","nom":"Tarn"},{"code":"82","nom":"Tarn-et-Garonne"},
+      {"code":"83","nom":"Var"},{"code":"84","nom":"Vaucluse"},{"code":"85","nom":"Vendée"},
+      {"code":"86","nom":"Vienne"},{"code":"87","nom":"Haute-Vienne"},{"code":"88","nom":"Vosges"},
+      {"code":"89","nom":"Yonne"},{"code":"90","nom":"Territoire de Belfort"},{"code":"91","nom":"Essonne"},
+      {"code":"92","nom":"Hauts-de-Seine"},{"code":"93","nom":"Seine-Saint-Denis"},
+      {"code":"94","nom":"Val-de-Marne"},{"code":"95","nom":"Val-d'Oise"}
+    ];
+
+    // 3) Génération des cases à cocher
+    const cbContainer = document.getElementById('departmentsCheckboxes');
+    departmentsList.forEach(d => {
+      const label = document.createElement('label');
+      label.className = 'inline-flex items-center text-sm';
+      const cb = document.createElement('input');
+      cb.type  = 'checkbox';
+      cb.name  = 'departments';
+      cb.value = d.code;
+      cb.className = 'mr-1';
+      label.append(cb, `${d.code} – ${d.nom}`);
+      cbContainer.append(label);
+    });
+
+    // 4) CRUD clients
+    const form    = document.getElementById('clientForm');
+    const tbody   = document.getElementById('clientsTableBody');
+    let editingId = null, clients = [];
+
+    async function loadClients() {
+      const snap = await db.collection('clients').get();
+      clients = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderTable();
+    }
+
+    function renderTable() {  
+      tbody.innerHTML = '';
+      clients.forEach(c => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b';
+        tr.innerHTML = `
+          <td class="p-2">${c.firstName}</td>
+          <td class="p-2">${c.lastName}</td>
+          <td class="p-2">${c.email}</td>
+          <td class="p-2">${c.phone||''}</td>
+          <td class="p-2">${c.company||''}</td>
+          <td class="p-2">${(c.departments||[]).join(', ')}</td>
+          <td class="p-2 space-x-2">
+            <button onclick="editClient('${c.id}')" class="px-2 py-1 bg-yellow-300 rounded">✏️</button>
+            <button onclick="deleteClient('${c.id}')" class="px-2 py-1 bg-red-300 rounded">🗑️</button>
+          </td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const deps = Array.from(document.querySelectorAll('input[name="departments"]:checked'))
+                        .map(cb => cb.value);
+      const record = {
+        firstName: form.firstName.value.trim(),
+        lastName:  form.lastName.value.trim(),
+        email:     form.email.value.trim(),
+        phone:     form.phone.value.trim(),
+        company:   form.company.value.trim(),
+        departments: deps
+      };
+      if (editingId) {
+        await db.collection('clients').doc(editingId).set(record);
+        editingId = null;
+        document.getElementById('saveBtn').textContent = 'Enregistrer';
+      } else {
+        await db.collection('clients').add(record);
+      }
+      form.reset();
+      loadClients();
+    });
+
+    window.deleteClient = async id => {
+      if (confirm('Supprimer ce client ?')) {
+        await db.collection('clients').doc(id).delete();
+        loadClients();
+      }
+    };
+
+    window.editClient = id => {
+      const c = clients.find(x => x.id === id);
+      form.firstName.value = c.firstName;
+      form.lastName.value  = c.lastName;
+      form.email.value     = c.email;
+      form.phone.value     = c.phone || '';
+      form.company.value   = c.company || '';
+      document.querySelectorAll('input[name="departments"]').forEach(cb => {
+        cb.checked = (c.departments||[]).includes(cb.value);
+      });
+      editingId = id;
+      document.getElementById('formTitle').textContent = 'Modifier un client';
+      document.getElementById('saveBtn').textContent  = 'Sauvegarder';
+    };
+
+    // Lancer au chargement
+    loadClients();
+  </script>
+
+</body>
+</html>
