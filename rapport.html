@@ -2,20 +2,29 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8"/>
-  <title>Rapports – Totaux par département</title>
+  <title>Rapports – Totaux</title>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 p-6">
 
-  <h1 class="text-2xl font-bold mb-4">Rapports Leads</h1>
+  <!-- NAVIGATION -->
+  <header class="bg-white shadow p-4 flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold">Rapports Leads</h1>
+    <nav class="space-x-4">
+      <a href="index.html"     class="text-gray-600 hover:text-blue-600">Accueil</a>
+      <a href="clients.html"   class="text-gray-600 hover:text-blue-600">Clients</a>
+      <a href="livraison.html" class="text-gray-600 hover:text-blue-600">Livraisons</a>
+      <a href="rapport.html"   class="text-blue-600 font-semibold">Rapports</a>
+    </nav>
+  </header>
 
-  <!-- Sélecteur de période -->
+  <!-- PÉRIODE -->
   <div class="flex items-center gap-4 mb-6">
-    <label>Période du
+    <label>Du
       <input type="date" id="startDate" class="border p-2 rounded"/>
     </label>
-    <label>au
+    <label>Au
       <input type="date" id="endDate" class="border p-2 rounded"/>
     </label>
     <button id="refreshBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
@@ -23,10 +32,10 @@
     </button>
   </div>
 
-  <!-- Tableau des totaux -->
+  <!-- TABLE TOTALS PAR DÉPT -->
   <table id="totalsTable" class="w-full table-auto border-collapse bg-white">
-    <thead>
-      <tr class="bg-gray-100">
+    <thead class="bg-gray-100">
+      <tr>
         <th class="border p-2">Code</th>
         <th class="border p-2">Département</th>
         <th class="border p-2">Total leads</th>
@@ -35,10 +44,9 @@
     <tbody></tbody>
   </table>
 
-  <!-- Firebase SDKs -->
+  <!-- SDK & script -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
-
   <script>
   document.addEventListener('DOMContentLoaded', () => {
     const firebaseConfig = { /* tes clés */ };
@@ -46,7 +54,7 @@
     const db = firebase.firestore();
 
     const departmentsList = [
-      {"code":"01","nom":"Ain"}, /* ... jusqu'à 95 ... */ {"code":"95","nom":"Val-d'Oise"}
+      {"code":"01","nom":"Ain"},/* ... */{"code":"95","nom":"Val-d'Oise"}
     ];
 
     const startDate = document.getElementById('startDate');
@@ -54,47 +62,45 @@
     const refreshBtn= document.getElementById('refreshBtn');
     const tbody     = document.querySelector('#totalsTable tbody');
 
-    // Default to last 7 days
+    // par défaut 7 derniers jours
     const today = new Date();
-    const prior = new Date();
-    prior.setDate(today.getDate()-6);
+    const prior = new Date(); prior.setDate(today.getDate()-6);
     startDate.value = prior.toISOString().slice(0,10);
     endDate.value   = today.toISOString().slice(0,10);
 
     refreshBtn.onclick = async () => {
-      const sd = startDate.value;
-      const ed = endDate.value;
-      if (!sd||!ed||sd>ed) return alert('Période invalide');
-      // Build date array
+      const sd = startDate.value, ed = endDate.value;
+      if(!sd||!ed||sd>ed) return alert('Période invalide');
+      // build array de dates
       const dates = [];
       let d = new Date(sd);
-      while(d <= new Date(ed)) {
+      while(d <= new Date(ed)){
         dates.push(d.toISOString().slice(0,10));
         d.setDate(d.getDate()+1);
       }
-      // Fetch leads in period
+      // fetch leads
       const snap = await db.collection('leads')
-        .where('date','in', dates).get();
-      // Aggregate by department
+        .where('date','in',dates).get();
+      // agrégation par département
       const byDept = {};
       snap.docs.forEach(doc=>{
         const { department, quantity } = doc.data();
         byDept[department] = (byDept[department]||0) + quantity;
       });
-      // Render table
+      // afficher
       tbody.innerHTML = '';
-      departmentsList.forEach(d => {
+      departmentsList.forEach(dpt=>{
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td class="border p-2">${d.code}</td>
-          <td class="border p-2">${d.nom}</td>
-          <td class="border p-2 text-right">${byDept[d.code]||0}</td>
+          <td class="border p-2">${dpt.code}</td>
+          <td class="border p-2">${dpt.nom}</td>
+          <td class="border p-2 text-right">${byDept[dpt.code]||0}</td>
         `;
         tbody.append(tr);
       });
     };
 
-    // Initial load
+    // initial
     refreshBtn.click();
   });
   </script>
