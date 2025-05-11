@@ -71,7 +71,7 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // --- 1) Initialisation Firebase ---
+    // 1) Initialisation Firebase
     firebase.initializeApp({
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -81,7 +81,7 @@
     const db = firebase.firestore();
     const storage = firebase.storage();
 
-    // --- 2) Références DOM & état ---
+    // 2) DOM refs
     const headerRow    = document.getElementById('headerRow');
     const weekRow      = document.getElementById('weekRow');
     const weekLabel    = document.getElementById('weekLabel');
@@ -98,7 +98,6 @@
     let currentMonday = startOfWeek(new Date());
     let clients = [], deliveries = [], lastFileUrl = {};
 
-    // --- 3) Helpers date ---
     function startOfWeek(d) {
       const day = d.getDay(), diff = d.getDate() - day;
       return new Date(d.setDate(diff));
@@ -107,322 +106,7 @@
       return d.toISOString().slice(0,10);
     }
 
-    // --- 4) Charger clients dans la sélection du modal ---
-    async function loadClients() {
-      const snap = await db.collection('clients').get();
-      clients = snap.docs.map(d=>({ id:d.id, ...d.data()}));
-      modalClient.innerHTML = '';
-      clients.forEach(c=>{
-        const o = document.createElement('option');
-        o.value = c.id;
-        o.text  = `${c.firstName||''} ${c.lastName||''}`.trim();
-        modalClient.append(o);
-      });
-    }
-
-    // --- 5) Charger tous les leads et mémoriser URL du fichier ---
-    async function loadDeliveries() {
-      const snap = await db.collection('leads').get();
-      deliveries = snap.docs.map(d => {
-        const data = d.data();
-        const key = `${data.clientId}|${data.date}`;
-        lastFileUrl[key] = data.fileUrl || null;
-        return data;
-      });
-      renderWeek();
-    }
-
-    // --- 6) Rendu de la grille hebdo avec 🗑️ et 📧 ---
-    function renderWeek() {
-      const mon = startOfWeek(new Date(currentMonday));
-      const sun = new Date(mon); sun.setDate(mon.getDate()+6);
-      weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
-
-      // En-tête
-      headerRow.innerHTML = '';
-      ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']
-        .forEach(day => {
-          const th = document.createElement('th');
-          th.className = 'border p-2';
-          th.textContent = day;
-          headerRow.append(th);
-        });
-
-      // Jours
-      weekRow.innerHTML = '';
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(mon); d.setDate(mon.getDate()+i);
-        const ds = fmt(d);
-        const td = document.createElement('td');
-        td.className = 'border p-2 align-top';
-
-        // Date (clic ouvre modal)
-        const title = document.createElement('div');
-        title.className = 'font-bold mb-1 cursor-pointer';
-        title.textContent = ds;
-        title.onclick = () => openModal(ds);
-        td.append(title);
-
-        // Agrégation par client
-        const byClient = {};
-        deliveries.filter(l => l.date === ds)
-                  .forEach(l => {
-                    byClient[l.clientId] = (byClient[l.clientId]||0) + l.quantity;
-                  });
-
-        // Affichage client + total + boutons
-        Object.entries(byClient).forEach(([cid, total]) => {
-          const cli = clients.find(c => c.id === cid) || {};
-          const row = document.createElement('div');
-          row.className = 'flex items-center justify-between text-sm mb-1';
-
-          // Label client:total
-          const label = document.createElement('span');
-          label.textContent = `${cli.firstName||''} ${cli.lastName||''}: ${total}`;
-
-          // Boutons 🗑️ et 📧
-          const btns = document.createElement('span');
-
-          // 🗑️ Suppression
-          const del = document.createElement('button');
-          del.innerHTML = '🗑️';
-          del.className = 'text-red-500 mx-1';
-          del.onclick = async ev => {
-            ev.stopPropagation();
-            if (!confirm(`Supprimer tous les leads de ${cli.firstName} ${cli.lastName} le ${ds} ?`)) return;
-            const snap2 = await db.collection('leads')
-              .where('date','==',ds)
-              .where('clientId','==',cid).get();
-            const batch = db.batch();
-            snap2.docs.forEach(doc => batch.delete(doc.ref));
-            await batch.commit();
-            await loadDeliveries();
-          };
-
-          // 📧 Envoi par EmailJS
-          const mail = document.createElement('button');
-          mail.innerHTML = '📧';
-          mail.className = 'text-blue-500 mx-1';
-          mail.onclick = ev => {
-            ev.stopPropagation();
-            sendMail(cid, ds);
-          };
-
-          btns.append(del, mail);
-          row.append(label, btns);
-          td.append(row);
-        });
-
-        weekRow.append(td);
-      }
-    }
-
-    // --- 7) Navigation semaines ---
-    prevWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate()-7);
-      renderWeek();
-    };
-    nextWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate()+7);
-      renderWeek();
-    };
-
-    // --- 8) Modal d’import ---
-    function openModal(date) {
-      modalDateEl.textContent = date;
-      modalOverlay.classList.remove('hidden');
-    }
-    modalCancel.onclick = () => modalOverlay.classList.add('hidden');
-
-    // --- 9) Import Excel → Storage + Firestore ---
-    modalSaveBtn.onclick = async () => {
-      const cid = modalClient.value;
-      const file = modalFile.files[0];
-      if (!cid || !file) return alert('Sélectionne un client et un fichier');
-
-      // 9a) Upload vers Firebase Storage
-      const path = `leads/${cid}/${modalDateEl.textContent}/${file.name}`;
-      const ref = storage.ref(path);
-      await ref.put(file);
-      const downloadURL = await ref.getDownloadURL();
-
-      // 9b) Lecture et comptage par département
-      const data = await file.arrayBuffer();
-      const wb = XLSX.read(data);
-      const arr = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
-      const idx = arr[0].findIndex(h => String(h).toLowerCase().includes('code'));
-      if (idx < 0) return alert('Colonne code postal manquante');
-      const counts = {};
-      arr.slice(1).forEach(r => {
-        const cp = String(r[idx]||'').trim();
-        if (!cp) return;
-        let dep = cp.slice(0,2);
-        if (dep === '20') dep = parseInt(cp[2],10) < 2 ? '2A' : '2B';
-        counts[dep] = (counts[dep]||0) + 1;
-      });
-
-      // 9c) Batch Firestore (avec fileUrl)
-      const batch = db.batch();
-      Object.entries(counts).forEach(([dep,qty]) => {
-        const docRef = db.collection('leads').doc();
-        batch.set(docRef, {
-          date:       modalDateEl.textContent,
-          clientId:   cid,
-          department: dep,
-          quantity:   qty,
-          fileUrl:    downloadURL
-        });
-      });
-      await batch.commit();
-
-      modalOverlay.classList.add('hidden');
-      await loadDeliveries();
-    };
-
-    // --- 10) Envoi e-mail via EmailJS ---
-    async function sendMail(clientId, date) {
-      const key = `${clientId}|${date}`;
-      const fileUrl = lastFileUrl[key];
-      if (!fileUrl) return alert('Aucun fichier enregistré pour ce client/ce jour.');
-
-      const cli = clients.find(c => c.id === clientId);
-      if (!cli || !cli.email) return alert('Email client introuvable.');
-
-      // Téléchargement + conversion Base64
-      const resp = await fetch(fileUrl);
-      const blob = await resp.blob();
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
-      reader.onload = async () => {
-        const base64 = reader.result.split(',')[1];
-
-        try {
-          await emailjs.send(
-            'service_4j49l4e',   // Service ID
-            'template_g3tjird',  // Template ID
-            {
-              to_email:            cli.email,
-              to_name:             `${cli.firstName} ${cli.lastName}`,
-              date:                date,
-              attachment:          base64,
-              attachment_filename: `leads-${date}.xlsx`
-            }
-          );
-          alert('E-mail envoyé avec succès ! 📧');
-        } catch (err) {
-          console.error('EmailJS Error:', err);
-          alert('Erreur lors de l’envoi de l’e-mail.');
-        }
-      };
-    }
-
-    // --- 11) Démarrage initial ---
-    loadClients().then(loadDeliveries);
-  });
-  </script>
-</body>
-</html>
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8"/>
-  <title>Livraisons</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <!-- Tailwind pour le style -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- SheetJS pour lire les Excel -->
-  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
-</head>
-<body class="bg-gray-100 flex flex-col h-screen">
-
-  <!-- NAVIGATION -->
-  <header class="bg-white p-4 shadow flex justify-between">
-    <h1 class="text-2xl">Livraisons</h1>
-    <nav class="space-x-4">
-      <a href="index.html">Accueil</a>
-      <a href="clients.html">Clients</a>
-      <a href="livraison.html" class="font-semibold text-blue-600">Livraisons</a>
-      <a href="rapport.html">Rapports</a>
-    </nav>
-  </header>
-
-  <!-- CONTRÔLES SEMAINE -->
-  <div class="p-4 bg-white flex items-center gap-4">
-    <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Sem préc.</button>
-    <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Sem suiv. →</button>
-    <span id="weekLabel" class="font-medium"></span>
-  </div>
-
-  <!-- GRILLE HEBDO -->
-  <div class="flex-1 overflow-auto p-4 bg-white">
-    <table class="w-full border-collapse table-fixed">
-      <thead><tr id="headerRow"></tr></thead>
-      <tbody><tr id="weekRow"></tr></tbody>
-    </table>
-  </div>
-
-  <!-- MODAL D’IMPORT PAR DÉPARTEMENT -->
-  <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
-    <div class="bg-white p-6 rounded shadow w-80 max-h-[80vh] overflow-auto">
-      <h2 class="text-lg mb-4">
-        Importer leads du <span id="modalDate"></span>
-      </h2>
-      <div class="space-y-3">
-        <label>Client
-          <select id="modalClient" class="w-full border p-2 rounded"></select>
-        </label>
-        <label>Fichier Excel
-          <input type="file" id="modalFile" accept=".xlsx,.xls"
-                 class="w-full border p-2 rounded"/>
-        </label>
-      </div>
-      <div class="mt-4 flex justify-end gap-2">
-        <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
-        <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
-
-  <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    // Init Firebase
-    firebase.initializeApp({
-      apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
-      authDomain: "lead-f9f71.firebaseapp.com",
-      projectId: "lead-f9f71"
-    });
-    const db = firebase.firestore();
-
-    // DOM refs
-    const headerRow    = document.getElementById('headerRow');
-    const weekRow      = document.getElementById('weekRow');
-    const weekLabel    = document.getElementById('weekLabel');
-    const prevWeekBtn  = document.getElementById('prevWeek');
-    const nextWeekBtn  = document.getElementById('nextWeek');
-
-    const modalOverlay = document.getElementById('modalOverlay');
-    const modalDateEl  = document.getElementById('modalDate');
-    const modalClient  = document.getElementById('modalClient');
-    const modalFile    = document.getElementById('modalFile');
-    const modalSaveBtn = document.getElementById('modalSave');
-    const modalCancel  = document.getElementById('modalCancel');
-
-    let currentMonday = startOfWeek(new Date());
-    let clients = [], deliveries = [];
-
-    function startOfWeek(d) {
-      const day = d.getDay(), diff = d.getDate() - day;
-      return new Date(d.setDate(diff));
-    }
-    function fmt(d) {
-      return d.toISOString().slice(0,10);
-    }
-
-    // Load clients
+    // Charger clients
     async function loadClients() {
       const snap = await db.collection('clients').get();
       clients = snap.docs.map(d => ({ id:d.id, ...d.data() }));
@@ -435,20 +119,24 @@
       });
     }
 
-    // Load leads
+    // Charger leads
     async function loadDeliveries() {
       const snap = await db.collection('leads').get();
-      deliveries = snap.docs.map(d => d.data());
+      deliveries = snap.docs.map(d => {
+        const data = d.data();
+        const key = `${data.clientId}|${data.date}`;
+        lastFileUrl[key] = data.fileUrl || null;
+        return data;
+      });
       renderWeek();
     }
 
-    // Render weekly grid with delete icons
+    // Afficher semaine
     function renderWeek() {
       const mon = startOfWeek(new Date(currentMonday));
       const sun = new Date(mon); sun.setDate(mon.getDate()+6);
       weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
 
-      // Header
       headerRow.innerHTML = '';
       ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']
         .forEach(day => {
@@ -458,52 +146,54 @@
           headerRow.append(th);
         });
 
-      // Days
       weekRow.innerHTML = '';
       for (let i = 0; i < 7; i++) {
-        const d = new Date(mon); d.setDate(mon.getDate()+i);
+        const d  = new Date(mon); d.setDate(mon.getDate()+i);
         const ds = fmt(d);
         const td = document.createElement('td');
         td.className = 'border p-2 align-top';
-        // Date + click to import modal
+
+        // Date ouvre modal
         const title = document.createElement('div');
         title.className = 'font-bold mb-1 cursor-pointer';
         title.textContent = ds;
         title.onclick = () => openModal(ds);
         td.append(title);
 
-        // Aggregate by client
+        // Total par client + 🗑️ + 📧
         const byClient = {};
         deliveries.filter(l => l.date === ds)
-                  .forEach(l => {
-                    byClient[l.clientId] = (byClient[l.clientId]||0) + l.quantity;
-                  });
+                  .forEach(l => byClient[l.clientId] = (byClient[l.clientId]||0) + l.quantity);
 
-        // Display each client with a trash icon
         Object.entries(byClient).forEach(([cid, total]) => {
-          const cli = clients.find(c => c.id===cid) || {};
-          const row = document.createElement('div');
-          row.className = 'flex justify-between items-center text-sm mb-1';
-          // Client name and total
+          const cli = clients.find(c => c.id === cid) || {};
+          const row= document.createElement('div');
+          row.className = 'flex items-center justify-between text-sm mb-1';
+
           const label = document.createElement('span');
           label.textContent = `${cli.firstName||''} ${cli.lastName||''}: ${total}`;
-          // Trash button
-          const btn = document.createElement('button');
-          btn.className = 'text-red-500 ml-2';
-          btn.innerHTML = '🗑️';
-          btn.onclick = async ev => {
+
+          const btns = document.createElement('span');
+          // 🗑️
+          const del = document.createElement('button');
+          del.innerHTML = '🗑️'; del.className='text-red-500 mx-1';
+          del.onclick = async ev => {
             ev.stopPropagation();
-            if (!confirm(`Supprimer tous les leads de ${cli.firstName} ${cli.lastName} le ${ds} ?`)) return;
-            // Delete all docs matching date & clientId
+            if (!confirm(`Supprimer leads ${cli.firstName} ${cli.lastName} le ${ds}?`)) return;
             const snap2 = await db.collection('leads')
-              .where('date','==',ds)
-              .where('clientId','==',cid).get();
+              .where('date','==',ds).where('clientId','==',cid).get();
             const batch = db.batch();
             snap2.docs.forEach(doc => batch.delete(doc.ref));
             await batch.commit();
             await loadDeliveries();
           };
-          row.append(label, btn);
+          // 📧
+          const mail = document.createElement('button');
+          mail.innerHTML='📧'; mail.className='text-blue-500 mx-1';
+          mail.onclick = ev => { ev.stopPropagation(); sendMail(cid, ds); };
+
+          btns.append(del, mail);
+          row.append(label, btns);
           td.append(row);
         });
 
@@ -511,53 +201,76 @@
       }
     }
 
-    // Navigation
-    prevWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate()-7);
-      renderWeek();
-    };
-    nextWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate()+7);
-      renderWeek();
-    };
+    prevWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()-7); renderWeek(); };
+    nextWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()+7); renderWeek(); };
 
-    // Modal
     function openModal(date) {
       modalDateEl.textContent = date;
       modalOverlay.classList.remove('hidden');
     }
     modalCancel.onclick = () => modalOverlay.classList.add('hidden');
 
-    // Save (import Excel)
     modalSaveBtn.onclick = async () => {
-      const cid = modalClient.value;
-      const file = modalFile.files[0];
-      if (!cid || !file) return alert('Sélectionne un client et un fichier');
-      // Read Excel
-      const arrayBuffer = await file.arrayBuffer();
-      const wb = XLSX.read(arrayBuffer);
-      const arr = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
-      const idx = arr[0].findIndex(h => String(h).toLowerCase().includes('code'));
-      if (idx < 0) return alert('Colonne code postal non trouvée');
-      // Count per department
+      const cid = modalClient.value, file = modalFile.files[0];
+      if (!cid || !file) return alert('Client + fichier requis');
+      // Upload
+      const path = `leads/${cid}/${modalDateEl.textContent}/${file.name}`;
+      const ref = storage.ref(path);
+      await ref.put(file);
+      const url = await ref.getDownloadURL();
+      // Lire Excel
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      const arr = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
+      const idx = arr[0].findIndex(h=>String(h).toLowerCase().includes('code'));
+      if(idx<0) return alert('Colonne code postal manquante');
       const counts = {};
-      arr.slice(1).forEach(r => {
-        const cp = String(r[idx]||'').trim();
-        if (!cp) return;
-        let dep = cp.slice(0,2);
-        if (dep === '20') dep = parseInt(cp[2],10) < 2 ? '2A' : '2B';
-        counts[dep] = (counts[dep]||0) + 1;
+      arr.slice(1).forEach(r=> {
+        const cp=String(r[idx]||'').trim();
+        if(!cp) return;
+        let dep=cp.slice(0,2);
+        if(dep==='20') dep = parseInt(cp[2],10)<2?'2A':'2B';
+        counts[dep] = (counts[dep]||0)+1;
       });
-      // Batch write
+      // Batch
       const batch = db.batch();
-      Object.entries(counts).forEach(([dep,qty]) => {
-        const ref = db.collection('leads').doc();
-        batch.set(ref, { date: modalDateEl.textContent, clientId: cid, department: dep, quantity: qty });
+      Object.entries(counts).forEach(([dep,qty])=>{
+        const docRef = db.collection('leads').doc();
+        batch.set(docRef, { date:modalDateEl.textContent, clientId:cid, department:dep, quantity:qty, fileUrl:url });
       });
       await batch.commit();
       modalOverlay.classList.add('hidden');
       await loadDeliveries();
     };
+
+    async function sendMail(clientId, date) {
+      const key = `${clientId}|${date}`, cli = clients.find(c=>c.id===clientId);
+      if(!lastFileUrl[key]) return alert('Pas de fichier ici.');
+      if(!cli||!cli.email) return alert('Email client manquant.');
+      const resp = await fetch(lastFileUrl[key]), blob = await resp.blob();
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onload = async () => {
+        const base64 = reader.result.split(',')[1];
+        try {
+          await emailjs.send(
+            'service_4j49l4e',
+            'template_g3tjird',
+            {
+              to_email: cli.email,
+              to_name: `${cli.firstName} ${cli.lastName}`,
+              date: date,
+              attachment: base64,
+              attachment_filename: `leads-${date}.xlsx`
+            }
+          );
+          alert('E-mail envoyé !');
+        } catch(e) {
+          console.error(e);
+          alert('Erreur EmailJS');
+        }
+      };
+    }
 
     // Init
     loadClients().then(loadDeliveries);
