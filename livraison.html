@@ -2,10 +2,10 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8"/>
-  <title>Livraisons – Import Excel Simplifié</title>
+  <title>Livraisons – Import Excel par Département</title>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- SheetJS pour lire Excel -->
+  <!-- SheetJS pour la lecture Excel -->
   <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col h-screen">
@@ -16,51 +16,43 @@
     <nav class="space-x-4 text-sm">
       <a href="index.html">Accueil</a>
       <a href="clients.html">Clients</a>
-      <a href="livraison.html" class="text-blue-600 font-semibold">Livraisons</a>
+      <a href="livraison.html" class="font-semibold text-blue-600">Livraisons</a>
       <a href="rapport.html">Rapports</a>
     </nav>
   </header>
 
-  <!-- CONTRÔLES -->
-  <div class="p-4 bg-white flex items-center space-x-4">
-    <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Semaine préc.</button>
-    <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Semaine suiv. →</button>
+  <!-- CONTRÔLES DE SEMAINE -->
+  <div class="p-4 bg-white flex items-center gap-4">
+    <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Sem préc.</button>
+    <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Sem suiv. →</button>
     <span id="weekLabel" class="font-medium"></span>
   </div>
 
-  <!-- AGENDA HEBDO -->
+  <!-- AFFICHAGE HEBDO -->
   <div class="flex-1 overflow-auto p-4 bg-white">
     <table class="w-full table-fixed border-collapse">
-      <thead>
-        <tr id="headerRow"></tr>
-      </thead>
-      <tbody>
-        <tr id="weekRow"></tr>
-      </tbody>
+      <thead><tr id="headerRow"></tr></thead>
+      <tbody><tr id="weekRow"></tr></tbody>
     </table>
   </div>
 
-  <!-- MODAL IMPORT / ÉDITION -->
+  <!-- MODAL D'IMPORT / ÉDITION -->
   <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
-    <div class="bg-white p-6 rounded shadow-lg w-80">
-      <h2 class="text-lg font-semibold mb-4" id="modalTitle">Importer leads</h2>
+    <div class="bg-white p-6 rounded shadow w-80">
+      <h2 id="modalTitle" class="text-lg font-semibold mb-4">Importer leads</h2>
       <div class="space-y-3">
         <label class="block">Client
           <select id="modalClient" class="w-full border p-2 rounded"></select>
         </label>
-        <label class="block">Fichier Excel
-          <input type="file" id="modalFile" accept=".xls,.xlsx" class="w-full border p-2 rounded"/>
+        <label class="block">Fichier Excel (ton modèle vierge)
+          <input type="file" id="modalFile" accept=".xlsx,.xls" class="w-full border p-2 rounded"/>
         </label>
       </div>
       <div class="mt-4 flex justify-between items-center">
-        <button id="modalDelete" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 hidden">
-          Supprimer
-        </button>
+        <button id="modalDelete" class="px-4 py-2 bg-red-500 text-white rounded hidden">Suppr.</button>
         <div class="flex gap-2">
-          <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">Annuler</button>
-          <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-            Enregistrer
-          </button>
+          <button id="modalCancel" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+          <button id="modalSave"   class="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
         </div>
       </div>
     </div>
@@ -72,7 +64,7 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // 1) Initialisation Firebase
+    // --- Initialisation Firebase ---
     const firebaseConfig = {
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -85,12 +77,12 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // 2) DOM & état
-    const headerRow     = document.getElementById('headerRow');
-    const weekRow       = document.getElementById('weekRow');
-    const weekLabel     = document.getElementById('weekLabel');
-    const prevWeekBtn   = document.getElementById('prevWeek');
-    const nextWeekBtn   = document.getElementById('nextWeek');
+    // --- Références DOM ---
+    const headerRow   = document.getElementById('headerRow');
+    const weekRow     = document.getElementById('weekRow');
+    const weekLabel   = document.getElementById('weekLabel');
+    const prevWeekBtn = document.getElementById('prevWeek');
+    const nextWeekBtn = document.getElementById('nextWeek');
 
     const modalOverlay  = document.getElementById('modalOverlay');
     const modalTitle    = document.getElementById('modalTitle');
@@ -100,10 +92,12 @@
     const modalCancelBtn= document.getElementById('modalCancel');
     const modalDeleteBtn= document.getElementById('modalDelete');
 
+    // --- État ---
     let currentMonday = startOfWeek(new Date());
     let clients = [], deliveries = [];
     let editingId = null, editingDate = null;
 
+    // --- Helpers date ---
     function startOfWeek(d) {
       const day = d.getDay(), diff = d.getDate() - day;
       return new Date(d.setDate(diff));
@@ -112,82 +106,87 @@
       return d.toISOString().slice(0,10);
     }
 
-    // 3) Charger clients
+    // --- Chargement clients pour <select> ---
     async function loadClients() {
       const snap = await db.collection('clients').get();
       clients = snap.docs.map(d => ({ id:d.id, ...d.data() }));
       modalClient.innerHTML = '';
       clients.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c.id;
-        opt.text  = `${c.firstName||''} ${c.lastName||''}`.trim();
-        modalClient.append(opt);
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.text  = `${c.firstName || ''} ${c.lastName || ''}`.trim();
+        modalClient.append(o);
       });
     }
 
-    // 4) Charger imports existants
+    // --- Chargement de tous les leads depuis Firestore ---
     async function loadDeliveries() {
       const snap = await db.collection('leads').get();
       deliveries = snap.docs.map(d => ({ id:d.id, ...d.data() }));
       renderWeek();
     }
 
-    // 5) Construire la grille hebdo
+    // --- Rendu de la grille hebdo ---
     function renderWeek() {
       const mon = startOfWeek(new Date(currentMonday));
-      const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
       weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
 
       // En-tête
       headerRow.innerHTML = '';
-      ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']
-        .forEach(day => {
-          const th = document.createElement('th');
-          th.className='border p-2';
-          th.textContent=day;
-          headerRow.append(th);
-        });
+      ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'].forEach(day => {
+        const th = document.createElement('th');
+        th.className = 'border p-2';
+        th.textContent = day;
+        headerRow.append(th);
+      });
 
-      // Cells
+      // Cases journalières
       weekRow.innerHTML = '';
-      for (let i=0; i<7; i++) {
-        const d = new Date(mon); d.setDate(mon.getDate()+i);
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(mon); d.setDate(mon.getDate() + i);
         const ds = fmt(d);
         const td = document.createElement('td');
-        td.className='border align-top h-32 p-1 cursor-pointer';
-        td.dataset.date=ds;
-        td.innerHTML=`<div class="font-semibold mb-1">${ds}</div><div>&nbsp;</div>`;
+        td.className = 'border align-top h-32 p-1 cursor-pointer';
+        td.dataset.date = ds;
+        td.innerHTML = `<div class="font-semibold mb-1">${ds}</div>`;
         td.onclick = () => openModal(ds);
         weekRow.append(td);
       }
 
-      // Afficher imports existants
+      // Afficher les imports existants
       deliveries
-        .filter(x => x.date>=fmt(mon) && x.date<=fmt(sun))
+        .filter(x => x.date >= fmt(mon) && x.date <= fmt(sun))
         .forEach(appendDelivery);
     }
 
-    // 6) Afficher un import
+    // --- Ajout d’une entrée (par département) ---
     function appendDelivery(entry) {
       const td = document.querySelector(`td[data-date="${entry.date}"]`);
-      if(!td) return;
-      const div=document.createElement('div');
-      div.className='p-1 bg-gray-100 mb-1 cursor-pointer';
-      const client=clients.find(c=>c.id===entry.clientId)||{};
-      div.textContent=`${client.firstName||''} ${client.lastName||''}: ${entry.quantity} leads`;
-      div.onclick=e=>{
+      if (!td) return;
+      const div = document.createElement('div');
+      div.className = 'p-1 bg-gray-100 mb-1 cursor-pointer';
+      const cli = clients.find(c => c.id === entry.clientId) || {};
+      div.textContent = `${cli.firstName||''} ${cli.lastName||''} [${entry.department}]: ${entry.quantity}`;
+      div.onclick = e => {
         e.stopPropagation();
         openModal(entry.date, entry.id);
       };
       td.append(div);
     }
 
-    // 7) Navigation semaine
-    prevWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()-7); renderWeek(); };
-    nextWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()+7); renderWeek(); };
+    // --- Navigation entre semaines ---
+    prevWeekBtn.onclick = () => {
+      currentMonday.setDate(currentMonday.getDate() - 7);
+      renderWeek();
+    };
+    nextWeekBtn.onclick = () => {
+      currentMonday.setDate(currentMonday.getDate() + 7);
+      renderWeek();
+    };
 
-    // 8) Modal open/close
-    function openModal(date, id=null) {
+    // --- Ouverture / fermeture du modal ---
+    function openModal(date, id = null) {
       editingDate = date;
       editingId   = id;
       modalTitle.textContent = id ? `Modifier ${date}` : `Importer ${date}`;
@@ -197,51 +196,74 @@
     }
     modalCancelBtn.onclick = () => modalOverlay.classList.add('hidden');
 
-    // 9) Enregistrer import simplifié (ignorer lignes vides)
+    // --- Enregistrement par département ---
     modalSaveBtn.onclick = async () => {
       const cid  = modalClient.value;
       const file = modalFile.files[0];
-      if(!cid)  return alert('Sélectionnez un client');
-      if(!file) return alert('Choisissez un fichier Excel');
+      if (!cid)  return alert('Sélectionnez un client');
+      if (!file) return alert('Choisissez un fichier Excel');
 
-      // Lire en array of arrays
+      // Lecture du fichier en array of arrays
       const data  = await file.arrayBuffer();
       const wb    = XLSX.read(data);
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const arr   = XLSX.utils.sheet_to_json(sheet, { header: 1 });
       if (arr.length < 2) return alert('Le fichier est vide ou sans en-tête');
 
-      // Ne retenir que les lignes comportant au moins une cellule non vide
-      const dataRows = arr.slice(1).filter(row =>
-        row.some(cell => cell != null && String(cell).trim() !== '')
+      // Repérer la colonne "code postal" dynamiquement
+      const headers = arr[0].map(h => String(h).toLowerCase());
+      const idxPostal = headers.findIndex(h =>
+        h.includes('postal') || h.includes('code')
       );
-      const totalRows = dataRows.length;
-      if (totalRows === 0) return alert('Aucune donnée de leads trouvée');
+      if (idxPostal < 0) return alert('Colonne “Code Postal” introuvable');
 
-      // Créer ou mettre à jour le document unique
-      if (editingId) {
-        await db.collection('leads').doc(editingId)
-          .update({ clientId: cid, quantity: totalRows });
-      } else {
-        await db.collection('leads').add({
-          clientId: cid,
-          date:     editingDate,
-          quantity: totalRows
-        });
+      // Comptage par département (2 premiers caractères)
+      const counts = {};
+      arr.slice(1).forEach(row => {
+        const cp = String(row[idxPostal] || '').trim();
+        if (!cp) return;
+        let dep = cp.slice(0,2);
+        // Gestion particulière de la Corse (20xxx → 2A/2B)
+        if (dep === '20' && cp.length >= 3) {
+          const digit = parseInt(cp.charAt(2),10);
+          dep = digit < 2 ? '2A' : '2B';
+        }
+        counts[dep] = (counts[dep] || 0) + 1;
+      });
+      if (Object.keys(counts).length === 0) {
+        return alert('Aucune donnée de code postal valide trouvée');
       }
 
+      // Écriture Firestore (un doc par département)
+      const batch = db.batch();
+      if (editingId) {
+        batch.delete(db.collection('leads').doc(editingId));
+      }
+      Object.entries(counts).forEach(([dep,qty]) => {
+        const ref = db.collection('leads').doc();
+        batch.set(ref, {
+          clientId:   cid,
+          date:       editingDate,
+          department: dep,
+          quantity:   qty
+        });
+      });
+      await batch.commit();
+
       modalOverlay.classList.add('hidden');
+      await loadDeliveries();
     };
 
-    // 10) Supprimer import
+    // --- Suppression d’un import existant ---
     modalDeleteBtn.onclick = async () => {
       if (editingId && confirm('Supprimer cet import ?')) {
         await db.collection('leads').doc(editingId).delete();
         modalOverlay.classList.add('hidden');
+        await loadDeliveries();
       }
     };
 
-    // 11) Démarrage
+    // --- Démarrage initial ---
     loadClients().then(loadDeliveries);
   });
   </script>
