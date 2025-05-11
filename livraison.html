@@ -28,7 +28,7 @@
     </nav>
   </header>
 
-  <!-- CONTRÔLES SEMAINE -->
+  <!-- CONTROLES SEMAINE -->
   <div class="p-4 bg-white flex items-center gap-4">
     <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Sem préc.</button>
     <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Sem suiv. →</button>
@@ -98,6 +98,7 @@
     let currentMonday = startOfWeek(new Date());
     let clients = [], deliveries = [], lastFileUrl = {};
 
+    // 3) Helpers date
     function startOfWeek(d) {
       const day = d.getDay(), diff = d.getDate() - day;
       return new Date(d.setDate(diff));
@@ -106,7 +107,7 @@
       return d.toISOString().slice(0,10);
     }
 
-    // Charger clients
+    // 4) Charger clients
     async function loadClients() {
       const snap = await db.collection('clients').get();
       clients = snap.docs.map(d => ({ id:d.id, ...d.data() }));
@@ -119,7 +120,7 @@
       });
     }
 
-    // Charger leads
+    // 5) Charger leads
     async function loadDeliveries() {
       const snap = await db.collection('leads').get();
       deliveries = snap.docs.map(d => {
@@ -131,7 +132,7 @@
       renderWeek();
     }
 
-    // Afficher semaine
+    // 6) Afficher semaine
     function renderWeek() {
       const mon = startOfWeek(new Date(currentMonday));
       const sun = new Date(mon); sun.setDate(mon.getDate()+6);
@@ -204,13 +205,16 @@
     prevWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()-7); renderWeek(); };
     nextWeekBtn.onclick = () => { currentMonday.setDate(currentMonday.getDate()+7); renderWeek(); };
 
+    // 7) Modal
     function openModal(date) {
       modalDateEl.textContent = date;
       modalOverlay.classList.remove('hidden');
     }
     modalCancel.onclick = () => modalOverlay.classList.add('hidden');
 
+    // 8) Enregistrement
     modalSaveBtn.onclick = async () => {
+      console.log('→ modalSaveBtn clicked');  // debug
       const cid = modalClient.value, file = modalFile.files[0];
       if (!cid || !file) return alert('Client + fichier requis');
       // Upload
@@ -232,7 +236,7 @@
         if(dep==='20') dep = parseInt(cp[2],10)<2?'2A':'2B';
         counts[dep] = (counts[dep]||0)+1;
       });
-      // Batch
+      // Batch Firestore
       const batch = db.batch();
       Object.entries(counts).forEach(([dep,qty])=>{
         const docRef = db.collection('leads').doc();
@@ -243,6 +247,7 @@
       await loadDeliveries();
     };
 
+    // 9) Envoi e-mail via EmailJS
     async function sendMail(clientId, date) {
       const key = `${clientId}|${date}`, cli = clients.find(c=>c.id===clientId);
       if(!lastFileUrl[key]) return alert('Pas de fichier ici.');
