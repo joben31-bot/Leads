@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8"/>
-  <title>Rapports – Totaux</title>
+  <title>Rapports – Détails journaliers</title>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -11,11 +11,11 @@
   <!-- NAVIGATION -->
   <header class="bg-white shadow p-4 flex justify-between items-center mb-6">
     <h1 class="text-2xl font-bold">Rapports Leads</h1>
-    <nav class="space-x-4">
-      <a href="index.html"     class="text-gray-600 hover:text-blue-600">Accueil</a>
-      <a href="clients.html"   class="text-gray-600 hover:text-blue-600">Clients</a>
-      <a href="livraison.html" class="text-gray-600 hover:text-blue-600">Livraisons</a>
-      <a href="rapport.html"   class="text-blue-600 font-semibold">Rapports</a>
+    <nav class="space-x-4 text-sm">
+      <a href="index.html">Accueil</a>
+      <a href="clients.html">Clients</a>
+      <a href="livraison.html">Livraisons</a>
+      <a href="rapport.html" class="text-blue-600 font-semibold">Rapports</a>
     </nav>
   </header>
 
@@ -32,75 +32,111 @@
     </button>
   </div>
 
-  <!-- TABLE TOTALS PAR DÉPT -->
-  <table id="totalsTable" class="w-full table-auto border-collapse bg-white">
-    <thead class="bg-gray-100">
-      <tr>
-        <th class="border p-2">Code</th>
-        <th class="border p-2">Département</th>
-        <th class="border p-2">Total leads</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <!-- CONTENEUR DE RAPPORT -->
+  <div id="reportContainer" class="space-y-8"></div>
 
-  <!-- SDK & script -->
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    const firebaseConfig = { /* tes clés */ };
+    // Init Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
+      authDomain: "lead-f9f71.firebaseapp.com",
+      projectId: "lead-f9f71",
+      storageBucket: "lead-f9f71.firebasestorage.app",
+      messagingSenderId: "243276469711",
+      appId: "1:243276469711:web:1aea9eba2a33e1c8026eba",
+      measurementId: "G-BM1YRHR193"
+    };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    const departmentsList = [
-      {"code":"01","nom":"Ain"},/* ... */{"code":"95","nom":"Val-d'Oise"}
-    ];
+    const startDate   = document.getElementById('startDate');
+    const endDate     = document.getElementById('endDate');
+    const refreshBtn  = document.getElementById('refreshBtn');
+    const container   = document.getElementById('reportContainer');
 
-    const startDate = document.getElementById('startDate');
-    const endDate   = document.getElementById('endDate');
-    const refreshBtn= document.getElementById('refreshBtn');
-    const tbody     = document.querySelector('#totalsTable tbody');
-
-    // par défaut 7 derniers jours
-    const today = new Date();
-    const prior = new Date(); prior.setDate(today.getDate()-6);
+    // Valeurs par défaut (7 derniers jours)
+    const today = new Date(), prior = new Date();
+    prior.setDate(today.getDate() - 6);
     startDate.value = prior.toISOString().slice(0,10);
     endDate.value   = today.toISOString().slice(0,10);
 
     refreshBtn.onclick = async () => {
-      const sd = startDate.value, ed = endDate.value;
-      if(!sd||!ed||sd>ed) return alert('Période invalide');
-      // build array de dates
+      container.innerHTML = '';
+      // Valider dates
+      const sd = new Date(startDate.value), ed = new Date(endDate.value);
+      if (!sd || !ed || sd > ed) return alert('Période invalide');
+
+      // Construire liste des dates
       const dates = [];
-      let d = new Date(sd);
-      while(d <= new Date(ed)){
+      for (let d = new Date(sd); d <= ed; d.setDate(d.getDate() + 1)) {
         dates.push(d.toISOString().slice(0,10));
-        d.setDate(d.getDate()+1);
       }
-      // fetch leads
+
+      // Charger tous les leads sur cette période
       const snap = await db.collection('leads')
-        .where('date','in',dates).get();
-      // agrégation par département
-      const byDept = {};
-      snap.docs.forEach(doc=>{
-        const { department, quantity } = doc.data();
-        byDept[department] = (byDept[department]||0) + quantity;
+        .where('date','in', dates).get();
+      const leads = snap.docs.map(d => d.data());
+
+      // Charger noms clients
+      const snapClients = await db.collection('clients').get();
+      const clientsMap = {};
+      snapClients.docs.forEach(d => {
+        clientsMap[d.id] = d.data();
       });
-      // afficher
-      tbody.innerHTML = '';
-      departmentsList.forEach(dpt=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="border p-2">${dpt.code}</td>
-          <td class="border p-2">${dpt.nom}</td>
-          <td class="border p-2 text-right">${byDept[dpt.code]||0}</td>
+
+      // Grouper par date → client → département
+      const report = {};
+      leads.forEach(({ date, clientId, department, quantity }) => {
+        if (!report[date]) report[date] = {};
+        if (!report[date][clientId]) report[date][clientId] = {};
+        report[date][clientId][department || '—'] =
+          (report[date][clientId][department] || 0) + quantity;
+      });
+
+      // Afficher section par date
+      dates.forEach(date => {
+        const dayData = report[date] || {};
+        const section = document.createElement('section');
+        section.innerHTML = `<h2 class="text-xl font-semibold mb-2">${date}</h2>`;
+
+        const table = document.createElement('table');
+        table.className = 'w-full table-auto border-collapse bg-white';
+        table.innerHTML = `
+          <thead class="bg-gray-100">
+            <tr>
+              <th class="border p-2">Client</th>
+              <th class="border p-2">Département</th>
+              <th class="border p-2">Leads</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
         `;
-        tbody.append(tr);
+        const tbody = table.querySelector('tbody');
+
+        Object.entries(dayData).forEach(([cid, deps]) => {
+          const client = clientsMap[cid] || {};
+          Object.entries(deps).forEach(([dep, qty]) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td class="border p-2">${client.firstName || ''} ${client.lastName || ''}</td>
+              <td class="border p-2">${dep}</td>
+              <td class="border p-2 text-right">${qty}</td>
+            `;
+            tbody.append(tr);
+          });
+        });
+
+        section.append(table);
+        container.append(section);
       });
     };
 
-    // initial
+    // Lancement initial
     refreshBtn.click();
   });
   </script>
