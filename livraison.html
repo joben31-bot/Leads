@@ -2,10 +2,9 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8"/>
-  <title>Livraisons – Import Excel par Département</title>
+  <title>Livraisons – Totaux par Client</title>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- SheetJS pour la lecture Excel -->
   <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col h-screen">
@@ -21,14 +20,14 @@
     </nav>
   </header>
 
-  <!-- CONTROLES DE SEMAINE -->
+  <!-- CONTRÔLES SEMAINE -->
   <div class="p-4 bg-white flex items-center gap-4">
     <button id="prevWeek" class="px-3 py-1 bg-gray-200 rounded">← Sem préc.</button>
     <button id="nextWeek" class="px-3 py-1 bg-gray-200 rounded">Sem suiv. →</button>
     <span id="weekLabel" class="font-medium"></span>
   </div>
 
-  <!-- AFFICHAGE HEBDO -->
+  <!-- GRILLE HEBDO -->
   <div class="flex-1 overflow-auto p-4 bg-white">
     <table class="w-full table-fixed border-collapse">
       <thead><tr id="headerRow"></tr></thead>
@@ -36,15 +35,15 @@
     </table>
   </div>
 
-  <!-- MODAL D'IMPORT / ÉDITION -->
+  <!-- MODAL IMPORT / ÉDITION PAR DÉPARTEMENT -->
   <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
-    <div class="bg-white p-6 rounded shadow w-80">
-      <h2 id="modalTitle" class="text-lg font-semibold mb-4">Importer leads</h2>
+    <div class="bg-white p-6 rounded shadow-lg w-80 max-h-[80vh] overflow-auto">
+      <h2 id="modalTitle" class="text-lg font-semibold mb-4">Importer / Modifier le <span id="modalDate"></span></h2>
       <div class="space-y-3">
         <label class="block">Client
           <select id="modalClient" class="w-full border p-2 rounded"></select>
         </label>
-        <label class="block">Fichier Excel (ton modèle vierge)
+        <label class="block">Fichier Excel
           <input type="file" id="modalFile" accept=".xlsx,.xls" class="w-full border p-2 rounded"/>
         </label>
       </div>
@@ -64,7 +63,7 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // --- Initialisation Firebase ---
+    // 1) Init Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",
       authDomain: "lead-f9f71.firebaseapp.com",
@@ -77,27 +76,27 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // --- Références DOM ---
-    const headerRow   = document.getElementById('headerRow');
-    const weekRow     = document.getElementById('weekRow');
-    const weekLabel   = document.getElementById('weekLabel');
-    const prevWeekBtn = document.getElementById('prevWeek');
-    const nextWeekBtn = document.getElementById('nextWeek');
+    // 2) DOM refs & état
+    const headerRow    = document.getElementById('headerRow');
+    const weekRow      = document.getElementById('weekRow');
+    const weekLabel    = document.getElementById('weekLabel');
+    const prevWeekBtn  = document.getElementById('prevWeek');
+    const nextWeekBtn  = document.getElementById('nextWeek');
 
-    const modalOverlay  = document.getElementById('modalOverlay');
-    const modalTitle    = document.getElementById('modalTitle');
-    const modalClient   = document.getElementById('modalClient');
-    const modalFile     = document.getElementById('modalFile');
-    const modalSaveBtn  = document.getElementById('modalSave');
-    const modalCancelBtn= document.getElementById('modalCancel');
-    const modalDeleteBtn= document.getElementById('modalDelete');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalDateEl  = document.getElementById('modalDate');
+    const modalTitle   = document.getElementById('modalTitle');
+    const modalClient  = document.getElementById('modalClient');
+    const modalFile    = document.getElementById('modalFile');
+    const modalSave    = document.getElementById('modalSave');
+    const modalCancel  = document.getElementById('modalCancel');
+    const modalDelete  = document.getElementById('modalDelete');
 
-    // --- État ---
     let currentMonday = startOfWeek(new Date());
     let clients = [], deliveries = [];
     let editingId = null, editingDate = null;
 
-    // --- Helpers date ---
+    // Helpers date
     function startOfWeek(d) {
       const day = d.getDay(), diff = d.getDate() - day;
       return new Date(d.setDate(diff));
@@ -106,7 +105,7 @@
       return d.toISOString().slice(0,10);
     }
 
-    // --- Chargement clients pour <select> ---
+    // 3) Charger clients dans le select
     async function loadClients() {
       const snap = await db.collection('clients').get();
       clients = snap.docs.map(d => ({ id:d.id, ...d.data() }));
@@ -119,17 +118,17 @@
       });
     }
 
-    // --- Chargement de tous les leads depuis Firestore ---
+    // 4) Charger tous les imports
     async function loadDeliveries() {
       const snap = await db.collection('leads').get();
       deliveries = snap.docs.map(d => ({ id:d.id, ...d.data() }));
       renderWeek();
     }
 
-    // --- Rendu de la grille hebdo ---
+    // 5) Rendu de la grille : PAR CLIENT, TOTAL DES LEADS
     function renderWeek() {
       const mon = startOfWeek(new Date(currentMonday));
-      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+      const sun = new Date(mon); sun.setDate(mon.getDate()+6);
       weekLabel.textContent = `${fmt(mon)} → ${fmt(sun)}`;
 
       // En-tête
@@ -141,107 +140,100 @@
         headerRow.append(th);
       });
 
-      // Cases journalières
+      // Jours
       weekRow.innerHTML = '';
       for (let i = 0; i < 7; i++) {
-        const d = new Date(mon); d.setDate(mon.getDate() + i);
+        const d = new Date(mon); d.setDate(mon.getDate()+i);
         const ds = fmt(d);
+
+        // Agréger par client
+        const byClient = {};
+        deliveries
+          .filter(x => x.date === ds)
+          .forEach(x => {
+            byClient[x.clientId] = (byClient[x.clientId]||0) + x.quantity;
+          });
+
+        // Construire le contenu
+        const container = document.createElement('div');
+        container.innerHTML = `<div class="font-semibold mb-1">${ds}</div>`;
+
+        Object.entries(byClient).forEach(([cid, total]) => {
+          const cli = clients.find(c => c.id === cid) || {};
+          const line = document.createElement('div');
+          line.className = 'text-sm mb-1';
+          line.textContent = `${cli.firstName||''} ${cli.lastName||''}: ${total}`;
+          container.append(line);
+        });
+
+        // Cellule cliquable
         const td = document.createElement('td');
         td.className = 'border align-top h-32 p-1 cursor-pointer';
         td.dataset.date = ds;
-        td.innerHTML = `<div class="font-semibold mb-1">${ds}</div>`;
+        td.append(container);
         td.onclick = () => openModal(ds);
         weekRow.append(td);
       }
-
-      // Afficher les imports existants
-      deliveries
-        .filter(x => x.date >= fmt(mon) && x.date <= fmt(sun))
-        .forEach(appendDelivery);
     }
 
-    // --- Ajout d’une entrée (par département) ---
-    function appendDelivery(entry) {
-      const td = document.querySelector(`td[data-date="${entry.date}"]`);
-      if (!td) return;
-      const div = document.createElement('div');
-      div.className = 'p-1 bg-gray-100 mb-1 cursor-pointer';
-      const cli = clients.find(c => c.id === entry.clientId) || {};
-      div.textContent = `${cli.firstName||''} ${cli.lastName||''} [${entry.department}]: ${entry.quantity}`;
-      div.onclick = e => {
-        e.stopPropagation();
-        openModal(entry.date, entry.id);
-      };
-      td.append(div);
-    }
-
-    // --- Navigation entre semaines ---
+    // Navigation
     prevWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate() - 7);
+      currentMonday.setDate(currentMonday.getDate()-7);
       renderWeek();
     };
     nextWeekBtn.onclick = () => {
-      currentMonday.setDate(currentMonday.getDate() + 7);
+      currentMonday.setDate(currentMonday.getDate()+7);
       renderWeek();
     };
 
-    // --- Ouverture / fermeture du modal ---
+    // 6) Modal standard RESTORE de la version import par département
     function openModal(date, id = null) {
       editingDate = date;
       editingId   = id;
+      modalDateEl.textContent = date;
       modalTitle.textContent = id ? `Modifier ${date}` : `Importer ${date}`;
       modalFile.value = null;
-      modalDeleteBtn.classList.toggle('hidden', !id);
+      modalDelete.classList.toggle('hidden', !id);
       modalOverlay.classList.remove('hidden');
     }
-    modalCancelBtn.onclick = () => modalOverlay.classList.add('hidden');
+    modalCancel.onclick = () => modalOverlay.classList.add('hidden');
 
-    // --- Enregistrement par département ---
-    modalSaveBtn.onclick = async () => {
+    modalSave.onclick = async () => {
       const cid  = modalClient.value;
       const file = modalFile.files[0];
       if (!cid)  return alert('Sélectionnez un client');
       if (!file) return alert('Choisissez un fichier Excel');
 
-      // Lecture du fichier en array of arrays
       const data  = await file.arrayBuffer();
       const wb    = XLSX.read(data);
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const arr   = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-      if (arr.length < 2) return alert('Le fichier est vide ou sans en-tête');
+      const arr   = XLSX.utils.sheet_to_json(sheet,{ header:1 });
+      if (arr.length<2) return alert('Fichier vide');
 
-      // Repérer la colonne "code postal" dynamiquement
-      const headers = arr[0].map(h => String(h).toLowerCase());
-      const idxPostal = headers.findIndex(h =>
-        h.includes('postal') || h.includes('code')
-      );
-      if (idxPostal < 0) return alert('Colonne “Code Postal” introuvable');
+      // trouver colonne postal
+      const hdr = arr[0].map(h=>String(h).toLowerCase());
+      const idx = hdr.findIndex(h=>h.includes('postal')||h.includes('code'));
+      if (idx<0) return alert('Colonne code postal manquante');
 
-      // Comptage par département (2 premiers caractères)
+      // compter par département
       const counts = {};
-      arr.slice(1).forEach(row => {
-        const cp = String(row[idxPostal] || '').trim();
+      arr.slice(1).forEach(r=>{
+        const cp = String(r[idx]||'').trim();
         if (!cp) return;
         let dep = cp.slice(0,2);
-        // Gestion particulière de la Corse (20xxx → 2A/2B)
-        if (dep === '20' && cp.length >= 3) {
-          const digit = parseInt(cp.charAt(2),10);
-          dep = digit < 2 ? '2A' : '2B';
+        if (dep==='20'&&cp.length>=3){
+          dep = parseInt(cp[2],10)<2?'2A':'2B';
         }
-        counts[dep] = (counts[dep] || 0) + 1;
+        counts[dep]=(counts[dep]||0)+1;
       });
-      if (Object.keys(counts).length === 0) {
-        return alert('Aucune donnée de code postal valide trouvée');
-      }
+      if (!Object.keys(counts).length) return alert('Aucune donnée valide');
 
-      // Écriture Firestore (un doc par département)
+      // batch write
       const batch = db.batch();
-      if (editingId) {
-        batch.delete(db.collection('leads').doc(editingId));
-      }
-      Object.entries(counts).forEach(([dep,qty]) => {
+      if (editingId) batch.delete(db.collection('leads').doc(editingId));
+      Object.entries(counts).forEach(([dep,qty])=>{
         const ref = db.collection('leads').doc();
-        batch.set(ref, {
+        batch.set(ref,{
           clientId:   cid,
           date:       editingDate,
           department: dep,
@@ -249,13 +241,11 @@
         });
       });
       await batch.commit();
-
       modalOverlay.classList.add('hidden');
       await loadDeliveries();
     };
 
-    // --- Suppression d’un import existant ---
-    modalDeleteBtn.onclick = async () => {
+    modalDelete.onclick = async () => {
       if (editingId && confirm('Supprimer cet import ?')) {
         await db.collection('leads').doc(editingId).delete();
         modalOverlay.classList.add('hidden');
@@ -263,7 +253,7 @@
       }
     };
 
-    // --- Démarrage initial ---
+    // 7) Démarrage
     loadClients().then(loadDeliveries);
   });
   </script>
