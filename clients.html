@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"/><title>Clients – Gestion</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-gray-100 flex flex-col h-screen">
+<header class="bg-white p-4 flex justify-between"><h1 class="text-2xl">Clients</h1>
+<nav><a href="index.html">Accueil</a></nav>
+</header>
+<div class="flex-1 grid lg:grid-cols-3">
+<aside class="p-6 bg-white overflow-y-auto">
+<h2 id="formTitle">Ajouter un client</h2>
+<form id="clientForm" class="space-y-4">
+<label>Prénom<br><input id="firstName" required class="w-full border p-2"/></label>
+<label>Nom<br><input id="lastName" required class="w-full border p-2"/></label>
+<label>Email<br><input id="email" required class="w-full border p-2"/></label>
+<label>Tél<br><input id="phone" class="w-full border p-2"/></label>
+<label>Société<br><input id="company" class="w-full border p-2"/></label>
+<label class="block">Départements</label>
+<div id="departmentsCheckboxes" class="border h-40 overflow-y-auto p-2 grid grid-cols-2 gap-1"></div>
+<div><button type="submit" id="saveBtn" class="bg-blue-600 text-white px-4 py-2">Enregistrer</button></div>
+</form>
+<button id="exportCsv" class="bg-green-500 text-white px-4 py-2 mt-4">Exporter CSV</button>
+</aside>
+<main class="p-6 bg-white overflow-auto">
+<table class="min-w-full"><thead><tr>
+<th>Prénom</th><th>Nom</th><th>Email</th><th>Tél</th><th>Société</th><th>Dpts</th><th>Actions</th>
+</tr></thead><tbody id="clientsTableBody"/></table>
+</main></div>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {apiKey:"AIzaSyBOa5KcgBr7PkQKT6e_ftWORjbGzncY4Ck",authDomain:"lead-f9f71.firebaseapp.com",projectId:"lead-f9f71",storageBucket:"lead-f9f71.firebasestorage.app",messagingSenderId:"243276469711",appId:"1:243276469711:web:1aea9eba2a33e1c8026eba",measurementId:"G-BM1YRHR193"};
+firebase.initializeApp(firebaseConfig);const db=firebase.firestore();
+const departmentsList = [{"code": "01", "nom": ""}, {"code": "02", "nom": ""}, {"code": "03", "nom": ""}, {"code": "04", "nom": ""}, {"code": "05", "nom": ""}, {"code": "06", "nom": ""}, {"code": "07", "nom": ""}, {"code": "08", "nom": ""}, {"code": "09", "nom": ""}, {"code": "10", "nom": ""}, {"code": "11", "nom": ""}, {"code": "12", "nom": ""}, {"code": "13", "nom": ""}, {"code": "14", "nom": ""}, {"code": "15", "nom": ""}, {"code": "16", "nom": ""}, {"code": "17", "nom": ""}, {"code": "18", "nom": ""}, {"code": "19", "nom": ""}, {"code": "20", "nom": ""}, {"code": "21", "nom": ""}, {"code": "22", "nom": ""}, {"code": "23", "nom": ""}, {"code": "24", "nom": ""}, {"code": "25", "nom": ""}, {"code": "26", "nom": ""}, {"code": "27", "nom": ""}, {"code": "28", "nom": ""}, {"code": "29", "nom": ""}, {"code": "30", "nom": ""}, {"code": "31", "nom": ""}, {"code": "32", "nom": ""}, {"code": "33", "nom": ""}, {"code": "34", "nom": ""}, {"code": "35", "nom": ""}, {"code": "36", "nom": ""}, {"code": "37", "nom": ""}, {"code": "38", "nom": ""}, {"code": "39", "nom": ""}, {"code": "40", "nom": ""}, {"code": "41", "nom": ""}, {"code": "42", "nom": ""}, {"code": "43", "nom": ""}, {"code": "44", "nom": ""}, {"code": "45", "nom": ""}, {"code": "46", "nom": ""}, {"code": "47", "nom": ""}, {"code": "48", "nom": ""}, {"code": "49", "nom": ""}, {"code": "50", "nom": ""}, {"code": "51", "nom": ""}, {"code": "52", "nom": ""}, {"code": "53", "nom": ""}, {"code": "54", "nom": ""}, {"code": "55", "nom": ""}, {"code": "56", "nom": ""}, {"code": "57", "nom": ""}, {"code": "58", "nom": ""}, {"code": "59", "nom": ""}, {"code": "60", "nom": ""}, {"code": "61", "nom": ""}, {"code": "62", "nom": ""}, {"code": "63", "nom": ""}, {"code": "64", "nom": ""}, {"code": "65", "nom": ""}, {"code": "66", "nom": ""}, {"code": "67", "nom": ""}, {"code": "68", "nom": ""}, {"code": "69", "nom": ""}, {"code": "70", "nom": ""}, {"code": "71", "nom": ""}, {"code": "72", "nom": ""}, {"code": "73", "nom": ""}, {"code": "74", "nom": ""}, {"code": "75", "nom": ""}, {"code": "76", "nom": ""}, {"code": "77", "nom": ""}, {"code": "78", "nom": ""}, {"code": "79", "nom": ""}, {"code": "80", "nom": ""}, {"code": "81", "nom": ""}, {"code": "82", "nom": ""}, {"code": "83", "nom": ""}, {"code": "84", "nom": ""}, {"code": "85", "nom": ""}, {"code": "86", "nom": ""}, {"code": "87", "nom": ""}, {"code": "88", "nom": ""}, {"code": "89", "nom": ""}, {"code": "90", "nom": ""}, {"code": "91", "nom": ""}, {"code": "92", "nom": ""}, {"code": "93", "nom": ""}, {"code": "94", "nom": ""}, {"code": "95", "nom": ""}];
+const cbContainer = document.getElementById('departmentsCheckboxes');
+departmentsList.forEach(d=>{const l=document.createElement('label');l.className='inline-flex items-center text-sm';const cb=document.createElement('input');cb.type='checkbox';cb.name='departments';cb.value=d.code;cb.className='mr-1';l.append(cb,d.code);cbContainer.append(l);});
+const form=document.getElementById('clientForm'),tbody=document.getElementById('clientsTableBody');
+let editingId=null,clients=[];
+async function loadClients(){const s=await db.collection('clients').get();clients=s.docs.map(d=>({id:d.id,...d.data()}));renderTable();}
+function renderTable(){tbody.innerHTML='';clients.forEach(c=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${c.firstName}</td><td>${c.lastName}</td><td>${c.email}</td><td>${c.phone||''}</td><td>${c.company||''}</td><td>${(c.departments||[]).join(', ')}</td><td><button onclick="editClient('${c.id}')">✏️</button><button onclick="deleteClient('${c.id}')">🗑️</button></td>`;tbody.append(tr);});}
+form.addEventListener('submit',async e=>{e.preventDefault();const deps=Array.from(document.querySelectorAll('input[name="departments"]:checked')).map(cb=>cb.value);const r={firstName:form.firstName.value,lastName:form.lastName.value,email:form.email.value,phone:form.phone.value,company:form.company.value,departments:deps};if(editingId){await db.collection('clients').doc(editingId).set(r);editingId=null;}else await db.collection('clients').add(r);form.reset();loadClients();});
+window.deleteClient=async id=>{if(confirm('Supprimer?')){await db.collection('clients').doc(id).delete();loadClients();}};
+window.editClient=id=>{const c=clients.find(x=>x.id===id);form.firstName.value=c.firstName;form.lastName.value=c.lastName;form.email.value=c.email;form.phone.value=c.phone||'';form.company.value=c.company||'';document.querySelectorAll('input[name="departments"]').forEach(cb=>cb.checked=(c.departments||[]).includes(cb.value));editingId=id;document.getElementById('formTitle').textContent='Modifier';document.getElementById('saveBtn').textContent='Sauvegarder';};
+loadClients();
+</script>
