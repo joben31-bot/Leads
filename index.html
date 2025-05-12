@@ -29,11 +29,9 @@
     </nav>
   </header>
 
-  <!-- SÉLECTEUR MODE -->
+  <!-- SÉLECTEUR -->
   <div class="p-4 bg-white">
-    <label for="clientSelect" class="block mb-2 font-medium">
-      Choisir un client :
-    </label>
+    <label for="clientSelect" class="block mb-2 font-medium">Vue :</label>
     <select id="clientSelect" class="w-1/3 border p-2 rounded bg-white">
       <option value="__general__">Générale</option>
     </select>
@@ -53,7 +51,7 @@
 
   // 2) State
   let clients = [], countsByDept = {}, geojsonLayer;
-  
+
   // 3) DOM
   const clientSelect = document.getElementById('clientSelect');
 
@@ -74,14 +72,21 @@
       opt.textContent = `${c.firstName||''} ${c.lastName||''}`.trim();
       clientSelect.append(opt);
     });
-    // initial style
     styleLayer();
   }
 
-  // 5) Styles
-  const styleGreen = { fillColor:'#38a169',  color:'#276749', weight:1, fillOpacity:0.7 };
-  const styleRed   = { fillColor:'#e53e3e',  color:'#9b2c2c', weight:1, fillOpacity:0.7 };
-  const styleWhite = { fillColor:'#ffffff',  color:'#ccc',    weight:1, fillOpacity:0.5 };
+  // 5) Color helpers
+  function getColorGeneral(n) {
+    return n === 1 ? 'green'
+         : n === 2 ? 'blue'
+         : n === 3 ? 'orange'
+         : n === 4 ? 'yellow'
+         : 'white';
+  }
+
+  const styleWhite = { fillColor:'#ffffff', color:'#aaa', weight:1, fillOpacity:0.5 };
+  const styleGreen = { fillColor:'#38a169', color:'#276749', weight:1, fillOpacity:0.7 };
+  const styleRed   = { fillColor:'#e53e3e', color:'#9b2c2c', weight:1, fillOpacity:0.7 };
 
   // 6) Style & tooltip
   function styleLayer() {
@@ -89,27 +94,32 @@
     const selectedDeps = mode==='__general__'
       ? []
       : (clients.find(c=>c.id===mode).departments||[]);
+
     geojsonLayer.eachLayer(layer => {
       const code = layer.feature.properties.code;
-      // tooltip: list names or fallback to code–nom
+      // tooltip: list names or fallback
       const names = clients
         .filter(c=> (c.departments||[]).includes(code))
-        .map(c=>c.firstName+' '+c.lastName);
+        .map(c=>`${c.firstName} ${c.lastName}`);
       const tooltip = names.length
         ? `${names.join(', ')} (${code})`
         : `${code} – ${layer.feature.properties.nom}`;
       layer.setTooltipContent(tooltip);
 
-      // style logic
+      // styling
       if (mode==='__general__') {
-        // générale: highlight by count
+        // general: color by count
         const n = countsByDept[code]||0;
-        layer.setStyle(n>0 ? styleRed : styleWhite);
+        layer.setStyle({ fillColor: getColorGeneral(n), color:'#555', weight:1, fillOpacity:0.7 });
       } else {
-        // client spécifique
-        if (selectedDeps.includes(code))       layer.setStyle(styleGreen);
-        else if ((countsByDept[code]||0) > 0) layer.setStyle(styleRed);
-        else                                   layer.setStyle(styleWhite);
+        // specific client
+        if (selectedDeps.includes(code)) {
+          layer.setStyle(styleGreen);
+        } else if ((countsByDept[code]||0) > 0) {
+          layer.setStyle(styleRed);
+        } else {
+          layer.setStyle(styleWhite);
+        }
       }
     });
   }
@@ -130,7 +140,6 @@
       loadClients();
     });
 
-  // 8) React to selection
   clientSelect.addEventListener('change', styleLayer);
   </script>
 </body>
